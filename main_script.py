@@ -56,25 +56,25 @@ plots_info = [
     {
         'data_top': density_x,
         'data_bottom': density_z,
-        'label': f'density ({density_x_units})',
+        'label': f'Density ({density_x_units})',
         'norm': LogNorm(),
     },
     {
         'data_top': column_density_x,
         'data_bottom': column_density_z,
-        'label': f'column density ({column_density_x_units})',
+        'label': f'Column Density ({column_density_x_units})',
         'norm': LogNorm(),
     },
     {
         'data_top': weighted_vz_x,
         'data_bottom': weighted_vz_z,
-        'label': f'weighted vz ({weighted_vz_x_units})',
+        'label': f'Density Weighted $v_z$ ({weighted_vz_x_units})',
         'norm': None,
     },
     {
         'data_top': weighted_T_x,
         'data_bottom': weighted_T_z,
-        'label': f'weighted_T_x ({weighted_T_x_units})',
+        'label': f'Density Weighted Tempeature ({weighted_T_x_units})',
         'norm': LogNorm(),
     }
 ]
@@ -83,7 +83,8 @@ plot_multiview_grid(
     plots_info=plots_info,
     extent_top=extent_x,
     extent_bottom=extent_z,
-    filename="elegant_multiview_figure.png"
+    filename="elegant_multiview_figure.png",
+    units=units
 )
 
 

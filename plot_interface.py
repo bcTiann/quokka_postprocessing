@@ -67,8 +67,9 @@ def plot_multiview_grid(plots_info: List[Dict],
                         extent_top: List[float],
                         extent_bottom: List[float],
                         filename: str,
-                        top_ylabel: str = "z [kpc]",
-                        bottom_ylabel: str = "x [kpc]"):
+                        top_ylabel: str = "z",
+                        bottom_ylabel: str = "x",
+                        units: str = 'pc'):
     """
     Generates and saves multi-plots.
     Parameters: 
@@ -79,9 +80,10 @@ def plot_multiview_grid(plots_info: List[Dict],
     - filename: Name of the file to save the entire figure.
     - top_ylabel: The y-axis label for the top row of plots.
     - bottom_ylabel: The y-axis label for the bottom row of plots.
+    - units: The unit string to append to the axis labels.
     """
     N_COLS = len(plots_info)
-    fig = plt.figure(figsize=(2* N_COLS, 8), layout="constrained")
+    fig = plt.figure(figsize=(2* N_COLS + 1.5, 8), layout="constrained")
 
     top_aspect = (extent_top[3] - extent_top[2]) / (extent_top[1] - extent_top[0])
     bottom_aspect = (extent_bottom[3] - extent_bottom[2]) / (extent_bottom[1] - extent_bottom[0])
@@ -107,41 +109,34 @@ def plot_multiview_grid(plots_info: List[Dict],
         ax_cbar = fig.add_subplot(gs[2, i])
 
         formatter = None
-        # 判斷是否為 LogNorm
+  
         if isinstance(norm, LogNorm):
-            # 如果是對數刻度，使用 LogFormatterMathtext
+
             formatter = LogFormatterMathtext()
         else:
-            # --- 這是修改的核心部分 ---
+
             formatter = ScalarFormatter(useMathText=True)
-            formatter.set_scientific(True)
-            formatter.set_powerlimits((0,0))
-            formatter.set_useOffset(True) 
+            formatter.set_scientific(True) # Use scientific notation
+            formatter.set_powerlimits((0,1))
+            formatter.set_useOffset(False) 
             
-            # 先創建 colorbar
-            cb = fig.colorbar(im, cax=ax_cbar, orientation='horizontal', format=formatter)
-            
-            # 然後用 MaxNLocator 控制刻度數量，避免擁擠
-            # nbins=4 代表最多顯示 4 個刻度
-            locator = MaxNLocator(nbins=5) 
-            cb.set_ticks(locator)
 
         fig.colorbar(im, cax=ax_cbar, orientation='horizontal', format=formatter)
-        ax_cbar.set_xlabel(info['label'], fontsize=8)
+        ax_cbar.set_title(info['label'], fontsize=8, y=0.9) 
 
 
 
     for i, (ax_t, ax_b) in enumerate(zip(top_axes, bottom_axes)):
         ax_t.tick_params(axis='x', labelbottom=False)
         if i == 0:
-            ax_t.set_ylabel(top_ylabel, fontsize=8)
-            ax_b.set_ylabel(bottom_ylabel, fontsize=8)
+            ax_t.set_ylabel(top_ylabel + " (" + units + ") ", fontsize=8)
+            ax_b.set_ylabel(bottom_ylabel + " ()" + units + ") ", fontsize=8)
         else:
             ax_t.tick_params(axis='y', labelleft=False)
             ax_b.tick_params(axis='y', labelleft=False)
 
     # plt.tight_layout()
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.savefig(filename, dpi=800, bbox_inches='tight', pad_inches=0.5)
     plt.show()
 
 
