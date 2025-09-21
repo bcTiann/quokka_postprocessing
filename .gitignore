@@ -1,0 +1,20 @@
+plt01000/
+plt00500/
+
+
+# Virtual environment
+yt-env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Large data files and simulation outputs
+plt*/
+sample/
+plots/
+
+# IDE and OS files
+.vscode/
+.DS_Store
+
