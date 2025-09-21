@@ -1,9 +1,9 @@
 # in: src/quokka2s/__init__.py
 
 
-from .data_handling import YTDataProvider
+from .data_handling import *
 
-from .plotting import create_plot, plot_multiview_grid
+from .plotting import *
 
 from .analysis import *
 

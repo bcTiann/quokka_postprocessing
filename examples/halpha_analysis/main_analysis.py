@@ -131,6 +131,54 @@ def main():
             camp='viridis_r' # Use a reversed colormap so dense areas are dark
         )
 
+    
+
+
+    # --- 6. (NEW!) Generate Combined Multi-plot Figure ---
+    print("\n--- Generating combined multi-plot figure ---")
+    
+    # Create the list of dictionaries, one for each subplot
+    plots_info = []
+    
+    if surface_brightness_no_dust is not None:
+        params = cfg.ANALYSES["halpha_no_dust"]
+        plots_info.append({
+            'data': surface_brightness_no_dust.T.to_ndarray(),
+            'title': params['title'],
+            'cbar_label': params['cbar_label'],
+            'norm': params['norm'],
+        })
+
+    if surface_brightness_with_dust is not None:
+        params = cfg.ANALYSES["halpha_with_dust"]
+        plots_info.append({
+            'data': surface_brightness_with_dust.T.to_ndarray(),
+            'title': params['title'],
+            'cbar_label': "Surface Brightness (erg/s/cm$^2$)", # Using a fixed label for consistency
+            'norm': params['norm'],
+        })
+
+    if ratio_map is not None:
+        plots_info.append({
+            'data': ratio_map.T,
+            'title': "Dust Transmission Ratio",
+            'cbar_label': "Fraction of Light Transmitted",
+            'norm': None, # Linear scale for ratio map
+        })
+
+    # Get the shared plot extent and labels
+    plot_extent = provider.get_plot_extent(axis=cfg.PROJECTION_AXIS, units=cfg.FIGURE_UNITS)
+    xlabel = f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})"
+    ylabel = f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})"
+
+    # Make the single call to the plotting function
+    q2s.create_horizontal_subplots(
+        plots_info=plots_info,
+        shared_extent=plot_extent,
+        shared_xlabel=xlabel,
+        shared_ylabel=ylabel,
+        filename=os.path.join(cfg.OUTPUT_DIR, "halpha_analysis_combined.png")
+    )
 
 
 if __name__ == '__main__':

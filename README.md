@@ -113,7 +113,7 @@ q2s.create_plot(
 
 This project is built upon a foundation of incredible open-source scientific software. We gratefully acknowledge the developers of the following packages, which are essential to the functionality of `quokka2s`:
 
-* **[QUOKKA](https://github.com/quokka-astro/quokka)**: The GPU-accelerated radiation-magnetohydrodynamics code that produces the simulation data this pipeline is designed to analyze[cite: 10, 25, 33]. We encourage users to cite the original QUOKKA papers (e.g., Wibking & Krumholz 2022; He et al. 2024a,b) when publishing results based on its data.
+* **[QUOKKA](https://github.com/quokka-astro/quokka)**: The GPU-accelerated radiation-magnetohydrodynamics code that produces the simulation data this pipeline is designed to analyze. We encourage users to cite the original QUOKKA papers (e.g., Wibking & Krumholz 2022; He et al. 2024a,b) when publishing results based on its data.
 
 * **[yt](https://yt-project.org/)**: A powerful, open-source Python package for analyzing and visualizing volumetric astrophysical data[cite: 13, 39]. `yt` is the core engine for all data loading and handling within this pipeline. Users of this software should also cite the `yt` paper (Turk et al. 2010).
 
