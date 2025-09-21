@@ -1,7 +1,7 @@
 # Quokka Post-processing Pipeline (quokka2s)
 
 [![PyPI version](https://badge.fury.io/py/quokka2s.svg)](https://badge.fury.io/py/quokka2s)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) -->
 
 A Python post-processing toolkit designed for the [QUOKKA](https://github.com/quokka-astro/quokka) radiation-magnetohydrodynamics (R-MHD) code. The primary goal of this project is to bridge the gap between theoretical simulation data and synthetic observational data, enabling direct comparisons between simulation results and real astronomical observations.
 
