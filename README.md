@@ -3,7 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/quokka2s.svg)](https://badge.fury.io/py/quokka2s)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A Python post-processing toolkit designed for the [QUOKKA](https://github.com/quokka-astro/quokka) radiation-magnetohydrodynamics (R-MHD) code. [cite_start]The primary goal of this project is to bridge the gap between theoretical simulation data and synthetic observational data, enabling direct comparisons between simulation results and real astronomical observations[cite: 1, 13].
+A Python post-processing toolkit designed for the [QUOKKA](https://github.com/quokka-astro/quokka) radiation-magnetohydrodynamics (R-MHD) code. The primary goal of this project is to bridge the gap between theoretical simulation data and synthetic observational data, enabling direct comparisons between simulation results and real astronomical observations.
 
 This repository contains two main components:
 1.  **`quokka2s`**: An installable Python library that provides core utilities for data handling, physics calculations, and visualization.
@@ -11,12 +11,12 @@ This repository contains two main components:
 
 ---
 
-## Core Features
+<!-- ## Core Features
 
-* [cite_start]**Convenient Data Interface**: Built on the powerful `yt` library, the `YTDataProvider` class makes it easy to extract slices, projections, and 3D grid data from QUOKKA simulation outputs[cite: 15, 82].
+* **Convenient Data Interface**: Built on the powerful `yt` library, the `YTDataProvider` class makes it easy to extract slices, projections, and 3D grid data from QUOKKA simulation outputs.
 * **Physics Analysis Module**: Offers a suite of functions for common astrophysical calculations, such as cumulative column density along a line of sight and dust attenuation factors.
 * **Publication-Quality Visualizations**: Includes a variety of plotting functions to rapidly generate high-quality figures, including single panels, multi-plot grids, and complex views with particle overlays and vector fields.
-* **Modular Design**: A clean and organized code structure that separates data handling, analysis, and plotting concerns, making the library easy to understand, maintain, and extend.
+* **Modular Design**: A clean and organized code structure that separates data handling, analysis, and plotting concerns, making the library easy to understand, maintain, and extend. -->
 
 ## Installation
 
@@ -68,9 +68,9 @@ This repository includes a complete example that calculates and visualizes H-alp
     ```
 
 The script will automatically perform the following steps:
-* [cite_start]Load the QUOKKA dataset and add custom derived fields (temperature, H-alpha luminosity)[cite: 83].
-* [cite_start]Calculate the H-alpha surface brightness map without dust absorption[cite: 86].
-* [cite_start]Calculate the H-alpha surface brightness map with dust absorption included[cite: 89].
+* Load the QUOKKA dataset and add custom derived fields (temperature, H-alpha luminosity).
+* Calculate the H-alpha surface brightness map without dust absorption.
+* Calculate the H-alpha surface brightness map with dust absorption included.
 * Generate a ratio map to visually demonstrate the effect of dust attenuation.
 
 All generated figures will be saved to the `examples/halpha_analysis/plots/` directory by default.
@@ -112,6 +112,6 @@ q2s.create_plot(
 
 Contributions are welcome! If you find a bug or have a suggestion for a new feature, please feel free to open an Issue or submit a Pull Request.
 
-## License
+<!-- ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). -->
