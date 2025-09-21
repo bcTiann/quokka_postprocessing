@@ -1,7 +1,7 @@
 # Quokka Post-processing Pipeline (quokka2s)
 
 [![PyPI version](https://badge.fury.io/py/quokka2s.svg)](https://badge.fury.io/py/quokka2s)
-<!-- [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) -->
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A Python post-processing toolkit designed for the [QUOKKA](https://github.com/quokka-astro/quokka) radiation-magnetohydrodynamics (R-MHD) code. The primary goal of this project is to bridge the gap between theoretical simulation data and synthetic observational data, enabling direct comparisons between simulation results and real astronomical observations.
 
@@ -107,11 +107,22 @@ q2s.create_plot(
     norm=LogNorm()
 )
 ```
+---
+
+## Dependencies and Acknowledgements
+
+This project is built upon a foundation of incredible open-source scientific software. We gratefully acknowledge the developers of the following packages, which are essential to the functionality of `quokka2s`:
+
+* **[QUOKKA](https://github.com/quokka-astro/quokka)**: The GPU-accelerated radiation-magnetohydrodynamics code that produces the simulation data this pipeline is designed to analyze[cite: 10, 25, 33]. We encourage users to cite the original QUOKKA papers (e.g., Wibking & Krumholz 2022; He et al. 2024a,b) when publishing results based on its data.
+
+* **[yt](https://yt-project.org/)**: A powerful, open-source Python package for analyzing and visualizing volumetric astrophysical data[cite: 13, 39]. `yt` is the core engine for all data loading and handling within this pipeline. Users of this software should also cite the `yt` paper (Turk et al. 2010).
+
+This work also relies heavily on the core scientific Python ecosystem, including NumPy and Matplotlib.
 
 ## Contributing
 
 Contributions are welcome! If you find a bug or have a suggestion for a new feature, please feel free to open an Issue or submit a Pull Request.
 
-<!-- ## License
+## License
 
-This project is licensed under the [MIT License](LICENSE). -->
+This project is licensed under the [MIT License](LICENSE).
