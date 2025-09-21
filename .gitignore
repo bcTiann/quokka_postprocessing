@@ -9,10 +9,10 @@ yt-env/
 __pycache__/
 *.pyc
 
-# Large data files and simulation outputs
+# # Large data files and simulation outputs
 plt*/
 sample/
-plots/
+# plots/
 
 # IDE and OS files
 .vscode/
