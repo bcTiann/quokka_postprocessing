@@ -19,6 +19,12 @@ def main():
 
     # Create output directory if it doesn't exist
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
+
+    # --- Initialize all possible result variables to None ---
+    surface_brightness_no_dust = None
+    surface_brightness_with_dust = None
+    ratio_map = None
+    co_map_K_kms = None
     
     # Map axis string to integer index for numpy
     axis_map = {'x': 0, 'y': 1, 'z': 2}
@@ -29,7 +35,9 @@ def main():
     print("Retrieving 3D data from simulation...")
     lum_3d = provider.get_grid_data(('gas', 'Halpha_luminosity'))
     rho_3d = provider.get_grid_data(('gas', 'density'))
+
     dx_3d = provider.get_grid_data(('boxlib', 'dx'))
+    print(f"dx_3d.mean : {dx_3d.mean}")
     print("...3D data retrieval complete.")
 
     # --- 3. Run "No Dust" Analysis ---
@@ -131,10 +139,84 @@ def main():
             camp='viridis_r' # Use a reversed colormap so dense areas are dark
         )
 
-    
+    if cfg.ANALYSES["co_despotic"]["enabled"]:
+
+        print("\n--- Starting CO Line analysis with DESPOTIC ---")
+        params = cfg.ANALYSES["co_despotic"]
 
 
-    # --- 6. (NEW!) Generate Combined Multi-plot Figure ---
+        print("Preparing 2D input maps for DESPOTIC...")
+        
+        # DESPOTIC , analysis on x center slice
+        slice_axis = 'z'
+        slice_coord = ds.domain_center[0]
+        resolution = (15, 15)
+        # 获取氢核数密度和气体温度的 2D 切片
+        # Physics Calculation Steps
+        # N_H_3d = q2s.calculate_cumulative_column_density(rho_3d, dx_3d, axis=proj_axis_idx, X_H=cfg.X_H)
+
+        
+        # # ======================= DEBUG STARTS HERE =======================
+        # print(f"Column density of H (N_H_3d):")
+        # print(f"N_H_3d shape:{ N_H_3d.shape }")
+        # print(f"  - Min: {N_H_3d.min():.2e} {N_H_3d.units}")
+        # print(f"  - Max: {N_H_3d.max():.2e} {N_H_3d.units}")
+        # print(f"  - Mean: {N_H_3d.mean():.2e} {N_H_3d.units}")
+        # # =================================================================
+
+        nH_map = provider.get_slice(('gas', 'number_density'), 
+                            axis=slice_axis, 
+                            coord=slice_coord, 
+                            resolution=resolution)
+        
+        Tg_map = provider.get_slice(('gas', 'temperature'), 
+                            axis=slice_axis, 
+                            coord=slice_coord,
+                            resolution=resolution)
+        
+        # 
+        # number_density_z = provider.get_slice(field=('gas', 'number_density'), 
+        #                     axis=slice_coord, 
+        #                     resolution=resolution)
+        colDen_map = provider.get_projection(('gas', 'density'), 
+                            axis=slice_axis,
+                            resolution=resolution)
+        
+        print(f"colDen_map units: {colDen_map.units}")
+
+        print("...input maps are ready.")
+        print(f"Shape of nH_map: {nH_map.shape}")
+        print(f"Shape of Tg_map: {Tg_map.shape}")
+        print(f"Shape of colDen_map: {colDen_map.shape}")
+        assert nH_map.shape == Tg_map.shape == colDen_map.shape, "Input maps must have the same shape!"
+
+        # --- 5b. 调用我们的新函数运行计算 ---
+
+        co_map_K_kms = q2s.run_despotic_on_map(
+            nH_map.to_ndarray(), 
+            Tg_map.to_ndarray(), 
+            colDen_map.to_ndarray()
+        )
+
+        # --- 5c. 可视化结果 ---
+        # 屏蔽计算失败的点 (我们之前设为了 NaN)
+        co_map_masked = np.ma.masked_where(np.isnan(co_map_K_kms), co_map_K_kms)
+
+        plot_extent = provider.get_plot_extent(axis=slice_axis, units=cfg.FIGURE_UNITS)
+        q2s.create_plot(
+            data_2d=co_map_masked.T, # .T to transpose for correct orientation
+            title=params['title'],
+            cbar_label=params['cbar_label'],
+            filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
+            extent=plot_extent,
+            xlabel=f"X ({cfg.FIGURE_UNITS})",
+            ylabel=f"Y ({cfg.FIGURE_UNITS})",
+            norm=params['norm'],
+            camp='viridis' 
+        )
+
+
+    # --- 6. Generate Combined Multi-plot Figure ---
     print("\n--- Generating combined multi-plot figure ---")
     
     # Create the list of dictionaries, one for each subplot

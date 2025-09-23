@@ -49,24 +49,65 @@ class YTDataProvider:
         """
         Get 3D array of the entire dataset in [cgs units].
         Returns:
-            - 3D NumPy array of the field data.
-            - string of units
+            - 3D YT Narray of the field data (with units)
+            - 
         """
 
         if level is None:
             level = self.ds.max_level
 
         dims = self.ds.domain_dimensions * (2**level)
+        # ds.box!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        # # 1. Define the slab boundaries
+        # min_coord = self.ds.quan(coord - depth / 2.0, units)
+        # max_coord = self.ds.quan(coord + depth / 2.0, units)
+
+        # # 2. Create the geometric box (the "slab")
+        # # Start with the full domain edges
+        # left_edge = self.ds.domain_left_edge.copy()
+        # right_edge = self.ds.domain_right_edge.copy()
+
+        # # Modify the edges along the slice axis to define the slab's thickness
+        # left_edge[axis_index] = min_coord
+        # right_edge[axis_index] = max_coord
         
+        # # Create the data object representing only the data within this box
+        # slab_particles = self.ds.box(left_edge, right_edge)
+
+
         grid = self.ds.covering_grid(level=level, left_edge=self.ds.domain_left_edge, dims=dims)
         data_with_units = grid[field].in_cgs()
+
         print(f"Retrieved 3D grid data for field '{field}' with shape {data_with_units.shape}")
         print(f"units: {data_with_units.units}")
-        # numpy_data = data_with_units.to_ndarray()
-        # unit_string = str(data_with_units.units)
-        # print(f"Retrieved 3D grid data for field '{field}' with shape {numpy_data.shape}")
-        # print(f"units: {unit_string}")
+
         return data_with_units
+
+    def get_grid_data_by_resolution(self,
+                               field: Tuple[str, str],
+                               resolution: Tuple[int, int, int]) -> np.ndarray:
+        """
+        Args:
+            field (Tuple[str, str]): The field to retrieve, e.g., ('gas', 'density').
+            resolution (Tuple[int, int, int]): The desired dimensions (nx, ny, nz).
+
+        Returns:
+            - YT array (unyt_array) of the field data with CGS units.
+        """
+        if not (isinstance(resolution, tuple) and len(resolution) == 3):
+            raise ValueError("`resolution` must be a tuple of three integers (nx, ny, nz).")
+            
+        print(f"Getting data at specified resolution {resolution}...")
+        grid = self.ds.covering_grid(level=0, left_edge=self.ds.domain_left_edge, dims=resolution)
+        data_with_units = grid[field].in_cgs()
+
+        print(f"Retrieved 3D grid data for field '{field}' with shape {data_with_units.shape}")
+        print(f"units: {data_with_units.units}")
+        return data_with_units
+    
+
+
 
     
 

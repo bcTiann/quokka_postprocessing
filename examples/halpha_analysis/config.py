@@ -34,5 +34,14 @@ ANALYSES = {
         "cbar_label": "Surface Brightness ({surface_brightness_with_dust.units})",
         "norm": LogNorm(),
         "enabled": True
+    },
+    "co_despotic": {
+        "title": "CO (J=1-0) Emission (DESPOTIC)",
+        "filename": "co_despotic_map.png",
+        "cbar_label": "Integrated Brightness Temperature (K km/s)",
+        "norm": None,  
+        "enabled": True
     }
 }
+
+
