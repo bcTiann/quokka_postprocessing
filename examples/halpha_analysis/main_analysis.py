@@ -33,12 +33,32 @@ def main():
     # --- 2. Get Base 3D Data from Simulation ---
     # These are needed for both analyses, so we get them once.
     print("Retrieving 3D data from simulation...")
-    lum_3d = provider.get_grid_data(('gas', 'Halpha_luminosity'))
-    rho_3d = provider.get_grid_data(('gas', 'density'))
+    lum_3d, lum_3d_extent = provider.get_cubic_box(('gas', 'Halpha_luminosity'))
+    rho_3d, rho_3d_extent = provider.get_cubic_box(('gas', 'density'))
 
-    dx_3d = provider.get_grid_data(('boxlib', 'dx'))
-    print(f"dx_3d.mean : {dx_3d.mean}")
+    dx_3d, dx_3d_extent = provider.get_cubic_box(('boxlib', 'dx'))
+    dx_projection = dx_3d.sum(axis=0)
+
+   
+    print("####################################")
+    print(f"dx_3d.mean : {dx_3d.mean()}")
+    print(f"dx_3d.var : {dx_3d.var()}")
+    print(f"dx_3d = {dx_3d}")
     print("...3D data retrieval complete.")
+    print("####################################")
+
+    q2s.create_plot(
+    data_2d=dx_projection.T.to_ndarray(), # Use the calculated ratio map
+    title="dx projection",
+    cbar_label="length of projected dx",
+    filename=os.path.join(cfg.OUTPUT_DIR, "dx_projection.png"),
+    extent=dx_3d_extent['x'],
+    xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
+    ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+    norm=None,  # Use a LINEAR scale for the ratio map, not LogNorm!
+    camp='viridis_r' # Use a reversed colormap so dense areas are dark
+    )
+
 
     # --- 3. Run "No Dust" Analysis ---
     if cfg.ANALYSES["halpha_no_dust"]["enabled"]:
@@ -55,7 +75,7 @@ def main():
             title=params['title'],
             cbar_label=params['cbar_label'],
             filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=plot_extent,
+            extent=lum_3d_extent['x'],
             xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})", # Clever way to get other axes
             ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
             norm=params['norm']
@@ -102,7 +122,7 @@ def main():
             title=params['title'],
             cbar_label=params['cbar_label'],
             filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=plot_extent,
+            extent=lum_3d_extent['x'],
             xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
             ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
             norm=params['norm']
@@ -132,7 +152,7 @@ def main():
             title="Dust Transmission (With Dust / Without Dust)",
             cbar_label="Fraction of Light Transmitted",
             filename=os.path.join(cfg.OUTPUT_DIR, "halpha_dust_ratio.png"),
-            extent=plot_extent,
+            extent=lum_3d_extent['x'],
             xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
             ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
             norm=None,  # Use a LINEAR scale for the ratio map, not LogNorm!
@@ -198,7 +218,8 @@ def main():
             colDen_map.to_ndarray()
         )
 
-        # --- 5c. 可视化结果 ---
+        # --- 5c. 可视化结果
+        # ---
         # 屏蔽计算失败的点 (我们之前设为了 NaN)
         co_map_masked = np.ma.masked_where(np.isnan(co_map_K_kms), co_map_K_kms)
 
@@ -249,14 +270,14 @@ def main():
         })
 
     # Get the shared plot extent and labels
-    plot_extent = provider.get_plot_extent(axis=cfg.PROJECTION_AXIS, units=cfg.FIGURE_UNITS)
+    
     xlabel = f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})"
     ylabel = f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})"
 
     # Make the single call to the plotting function
     q2s.create_horizontal_subplots(
         plots_info=plots_info,
-        shared_extent=plot_extent,
+        shared_extent=lum_3d_extent['x'],
         shared_xlabel=xlabel,
         shared_ylabel=ylabel,
         filename=os.path.join(cfg.OUTPUT_DIR, "halpha_analysis_combined.png")

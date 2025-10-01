@@ -2,6 +2,7 @@
 import yt
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
+from unyt import unyt_array
 
 class YTDataProvider:
     def __init__(self, ds):
@@ -45,36 +46,20 @@ class YTDataProvider:
 
     def get_grid_data(self,
                     field: Tuple[str, str],
-                    level: Optional[int] = None) -> Tuple[np.ndarray, np.ndarray]:
+                    level: Optional[int] = None,
+                    dims: Tuple[int, int, int] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get 3D array of the entire dataset in [cgs units].
         Returns:
             - 3D YT Narray of the field data (with units)
             - 
         """
-
+        
         if level is None:
             level = self.ds.max_level
-
-        dims = self.ds.domain_dimensions * (2**level)
-        # ds.box!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-        # # 1. Define the slab boundaries
-        # min_coord = self.ds.quan(coord - depth / 2.0, units)
-        # max_coord = self.ds.quan(coord + depth / 2.0, units)
-
-        # # 2. Create the geometric box (the "slab")
-        # # Start with the full domain edges
-        # left_edge = self.ds.domain_left_edge.copy()
-        # right_edge = self.ds.domain_right_edge.copy()
-
-        # # Modify the edges along the slice axis to define the slab's thickness
-        # left_edge[axis_index] = min_coord
-        # right_edge[axis_index] = max_coord
+        if dims is None:
+            dims = self.ds.domain_dimensions * (2**level)
         
-        # # Create the data object representing only the data within this box
-        # slab_particles = self.ds.box(left_edge, right_edge)
-
 
         grid = self.ds.covering_grid(level=level, left_edge=self.ds.domain_left_edge, dims=dims)
         data_with_units = grid[field].in_cgs()
@@ -83,33 +68,203 @@ class YTDataProvider:
         print(f"units: {data_with_units.units}")
 
         return data_with_units
+    
 
-    def get_grid_data_by_resolution(self,
-                               field: Tuple[str, str],
-                               resolution: Tuple[int, int, int]) -> np.ndarray:
+
+    def downsample_3d_array(self,
+                        data_cube: unyt_array,
+                        factor: int
+                        ) -> unyt_array:
         """
-        Args:
-            field (Tuple[str, str]): The field to retrieve, e.g., ('gas', 'density').
-            resolution (Tuple[int, int, int]): The desired dimensions (nx, ny, nz).
+        Downsamples a 3D unyt_array by an integer factor by averaging blocks,
+        preserving the units.
+
+        Parameters:
+        - data_cube: The input 3D unyt_array (e.g., shape (128, 128, 128)).
+        - factor: The integer factor to downsample by (e.g., 2, 4, 8).
+                The dimensions of the data_cube must be divisible by the factor.
 
         Returns:
-            - YT array (unyt_array) of the field data with CGS units.
+        - The downsampled 3D unyt_array with the same units as the input.
         """
-        if not (isinstance(resolution, tuple) and len(resolution) == 3):
-            raise ValueError("`resolution` must be a tuple of three integers (nx, ny, nz).")
+
+        orig_shape = np.array(data_cube.shape)
+
+        if not np.all(orig_shape % factor == 0):
+            raise ValueError(f"The shape of the data cube {orig_shape} is notdivisible by the facot {factor}.")
+        
+        new_shape = (orig_shape // factor).astype(int)
+
+        reshaped_cube = data_cube.reshape(new_shape[0], factor,
+                                        new_shape[1], factor,
+                                        new_shape[2], factor)
+        downsampled = reshaped_cube.mean(axis=(1, 3, 5))
+
+        return downsampled
+
+
+
+    def get_cubic_box(self,
+                      field: Tuple[str, str],
+                      box_width: Optional[unyt_array] = None,
+                      center: Optional[unyt_array] = None,
+                      level: Optional[int] = None
+                      ):
+        """
+        Extracts a data box.
+        """
+
+        if center is None:
+            center = self.ds.domain_center
+            print(f"Center not provided. Using domain_center: {center}")
+
+        if level is None:
+            level = self.ds.max_level
+
+
+        if box_width is None:
+            min_side_length = self.ds.domain_width.min()
+            box_width = self.ds.arr([min_side_length] * 3)
+            print(f"Box width not provided. Defaulting to the largest possible width: {box_width}")
+        
+        half_width = box_width / 2.0
+        left_edge = center - half_width
+        right_edge = center + half_width
+        print(f"Defining a physical box from {left_edge} to {right_edge}")
+
+        pixel_widths = self.ds.domain_width / self.ds.domain_dimensions
+
+        dims = np.round(box_width / pixel_widths).astype(int) * 2**level
+        print(f"Calculated corresponding pixel dims: {dims}")
+
+        box_region = self.ds.region(center, left_edge, right_edge)
+
+        grid = self.ds.covering_grid(
+            level=level,
+            left_edge=left_edge,
+            dims=dims,
+            data_source=box_region
+        )
+        
+        data_box = grid[field].in_cgs()
+        print(f"Retrieved data box for field '{field}', with shape {data_box.shape}")
+
+        extents = {
+            'x': [left_edge[1], right_edge[1], left_edge[2], right_edge[2]],
+            'y': [left_edge[0], right_edge[0], left_edge[2], right_edge[2]],
+            'z': [left_edge[0], right_edge[0], left_edge[1], right_edge[1]]
+        }
+
+        return data_box, extents
+
+
+    def get_slab_z(self,
+                      field: Tuple[str, str],
+                      slab_width: Optional[unyt_array] = None,
+                      center: Optional[unyt_array] = None,
+                      level: Optional[int] = None
+                      ):
+        """
+        Extracts a data slab oriented along the Z-axis.
+        The slab covers the full extent of the X and Y dimensions.
+        The width of the slab in the Z direction is specified by the user.
+        """
+
+        if center is None:
+            center = self.ds.domain_center
+            print(f"Center not provided. Using domain_center: {center}")
+
+        if level is None:
+            level = self.ds.max_level
+
+
+        if slab_width is None:
+            slab_width = self.ds.domain_width[2]
+            print(f"Slab width not provided. Defaulting to Full of Z-domain width: {slab_width}")
+        
+        left_edge_xy = self.ds.domain_left_edge[0:2]
+        right_edge_xy = self.ds.domain_right_edge[0:2]
+
+        half_width_z = slab_width / 2.0
+        left_edge_z = center[2] - half_width_z
+        right_edge_z = center[2] + half_width_z
+
+
+        left_edge = self.ds.arr([left_edge_xy[0], left_edge_xy[1], left_edge_z])
+        right_edge = self.ds.arr([right_edge_xy[0], right_edge_xy[1], right_edge_z])
+        print(f"Defining a physical slab from {left_edge} to {right_edge}")
+        
+        pixel_widths = self.ds.domain_width / self.ds.domain_dimensions
+        dims_xy = self.ds.domain_dimensions[0:2] * (2**level)
+
+        num_z_pixels = np.round(slab_width / pixel_widths[2]).astype(int)
+
+        dims = np.array([dims_xy[0], dims_xy[1], num_z_pixels]) * 2**level
+        print(f"Calculated corresponding pixel dimensions: {dims}")
+
+        box_region = self.ds.box(left_edge, right_edge)
+
+        grid = self.ds.covering_grid(
+            level=level,
+            left_edge=left_edge,
+            dims=dims,
             
-        print(f"Getting data at specified resolution {resolution}...")
-        grid = self.ds.covering_grid(level=0, left_edge=self.ds.domain_left_edge, dims=resolution)
-        data_with_units = grid[field].in_cgs()
+            data_source=box_region
+        )
 
-        print(f"Retrieved 3D grid data for field '{field}' with shape {data_with_units.shape}")
-        print(f"units: {data_with_units.units}")
-        return data_with_units
-    
+        data_slab = grid[field].in_cgs()
+        print(f"Retrieved data slab for field '{field}' with shape {data_slab.shape}")
+
+        extents = {
+            'x': [left_edge[1], right_edge[1], left_edge[2], right_edge[2]],
+            'y': [left_edge[0], right_edge[0], left_edge[2], right_edge[2]],
+            'z': [left_edge[0], right_edge[0], left_edge[1], right_edge[1]]
+        }
+
+        return data_slab, extents
 
 
+    # def get_cubic_box_pixel(self,
+    #                   field: Tuple[str, str],
+    #                   box_size: Optional[int] = None,
+    #                   box_center: Optional[Tuple[int, int, int]] = None):
+    #     print("Step 1: Loading the entire grid into memory (this may take a while)...")
+    #     full_grid_data = self.get_grid_data(field=field)
+    #     nx, ny, nz = full_grid_data.shape
 
-    
+    #     if box_center is None:
+    #         center_x_idx, center_y_idx, center_z_idx = nx // 2, ny // 2, nz // 2
+    #         center = self.ds.domain_center
+    #         print(f" center = {center}")
+    #         print(f"box_center not provided, using geometric center ({center_x_idx}, {center_y_idx}, {center_z_idx}).")
+    #     else: 
+    #         center_x_idx, center_y_idx, center_z_idx = box_center
+    #         print(f"Using user-provided box_center ({center_x_idx}, {center_y_idx}, {center_z_idx}).")
+
+    #     print("++++++++++++++++++++++++DEBUG+++++++++++++++++++++")
+    #     print(f"nx = {nx}")
+    #     if box_size is None:
+    #         box_size = np.min(full_grid_data.shape)
+    #     print("++++++++++++++++++++++++DEBUG+++++++++++++++++++++")
+    #     print(f"box_size = {box_size}")
+    #     half_size = box_size // 2
+
+    #     start_x = max(0, center_x_idx - half_size)
+    #     end_x   = min(nx, center_x_idx + half_size)
+
+    #     start_y = max(0, center_y_idx - half_size)
+    #     end_y   = min(ny, center_y_idx + half_size)
+
+    #     start_z = max(0, center_z_idx - half_size)
+    #     end_z   = min(nz, center_z_idx + half_size)
+
+    #     print(f"Step 3: Calculated slice indices: X({start_x}:{end_x}), Y({start_y}:{end_y}), Z({start_z}:{end_z})")
+    #     center_cube_data = full_grid_data[start_x:end_x, start_y:end_y, start_z:end_z]
+    #     print(f"--- Slicing complete. Final cube shape: {center_cube_data.shape} ---")
+    #     extent = 0
+    #     return center_cube_data, extent
+
+
 
 
     def get_projection(self,
@@ -154,6 +309,7 @@ class YTDataProvider:
         vertical_min, vertical_max = self.ds.domain_left_edge.in_units(units)[axes[1]].value, self.ds.domain_right_edge.in_units(units)[axes[1]].value
         
         return [horizon_min, horizen_max, vertical_min, vertical_max]
+
 
     def get_particle_positions(self,
                                axis: Union[str, int],

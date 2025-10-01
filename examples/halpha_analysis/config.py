@@ -37,7 +37,7 @@ ANALYSES = {
     },
     "co_despotic": {
         "title": "CO (J=1-0) Emission (DESPOTIC)",
-        "filename": "co_despotic_map.png",
+        "filename": "co_despotic_map_(2).png",
         "cbar_label": "Integrated Brightness Temperature (K km/s)",
         "norm": None,  
         "enabled": True
