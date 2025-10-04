@@ -96,7 +96,7 @@ def calculate_single_despotic_point(
             cell.rad.chi = 1.0
             
             cell.setTempEq()
-
+            
             cell.addEmitter("CO", emitter_abundance)
 
             # print("="*50)

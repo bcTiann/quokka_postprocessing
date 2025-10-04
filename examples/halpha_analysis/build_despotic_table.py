@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from scipy.interpolate import griddata
 from pathlib import Path
+import time
 from quokka2s.despotic_tables import (
     DespoticTable,
     LogGrid,
@@ -212,4 +213,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    start = time.perf_counter()
     main()
+    elapsed = time.perf_counter() - start
+    print(f"Total runtime: {elapsed:.2f} s")

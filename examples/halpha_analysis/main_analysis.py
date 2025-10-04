@@ -3,6 +3,7 @@
 import yt
 import numpy as np
 import os
+import time
 
 # --- Import our custom modules ---
 import config as cfg
@@ -285,4 +286,7 @@ def main():
 
 
 if __name__ == '__main__':
+    start = time.perf_counter()
     main()
+    elapsed = time.perf_counter() - start
+    print(f"\nTotal analysis time: {elapsed/60:.2f} minutes")
