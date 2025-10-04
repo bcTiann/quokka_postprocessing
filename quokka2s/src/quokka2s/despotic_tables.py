@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 import warnings
 
 import contextlib
@@ -12,7 +12,9 @@ import io
 import numpy as np
 from joblib import Parallel, delayed
 from scipy.interpolate import RectBivariateSpline, griddata
-from tqdm import tqdm
+from tqdm.auto import tqdm
+from tqdm_joblib import tqdm_joblib
+
 
 from despotic import cloud
 from despotic.chemistry import NL99
@@ -96,7 +98,7 @@ def calculate_single_despotic_point(
             cell.rad.chi = 1.0
             
             cell.setTempEq()
-            
+
             cell.addEmitter("CO", emitter_abundance)
 
             # print("="*50)
@@ -219,23 +221,45 @@ def build_table(
     nH_points = nH_grid.sample()
     col_den_points = col_den_grid.sample()
 
-    nH_iterable: Iterable[float] = list(nH_points)
+    # nH_iterable: Iterable[float] = list(nH_points)
+    # if show_progress:
+    #     nH_iterable = tqdm(nH_iterable, desc="DESPOTIC rows")
+
+    # results = Parallel(n_jobs=n_jobs)(
+    #     delayed(_compute_row)(
+    #         nH,
+    #         col_den_points,
+    #         tg_guesses,
+    #         interpolator,
+    #         repeat_equilibrium=repeat_equilibrium,
+    #         log_failures=log_failures,
+    #         row_idx=row_idx,
+    #     )
+    #     for row_idx, nH in enumerate(nH_iterable)      
+    # )
+    progress_bar = None
+    progress_manager = contextlib.nullcontext()
     if show_progress:
-        nH_iterable = tqdm(nH_iterable, desc="DESPOTIC rows")
+        progress_bar = tqdm(total=nH_points.size, desc="DESPOTIC rows")
+        progress_manager = tqdm_joblib(progress_bar)
 
-    results = Parallel(n_jobs=n_jobs)(
-        delayed(_compute_row)(
-            nH,
-            col_den_points,
-            tg_guesses,
-            interpolator,
-            repeat_equilibrium=repeat_equilibrium,
-            log_failures=log_failures,
-            row_idx=row_idx,
+    with progress_manager:
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(_compute_row)(
+                nH,
+                col_den_points,
+                tg_guesses,
+                interpolator,
+                repeat_equilibrium=repeat_equilibrium,
+                log_failures=log_failures,
+                row_idx=row_idx,
+            )
+            for row_idx, nH in enumerate(nH_points)
         )
-        for row_idx, nH in enumerate(nH_iterable)      
-    )
 
+    if progress_bar is not None:
+        progress_bar.close()
+    
     co_int_tb = np.array([row[0] for row in results])
     tg_final = np.array([row[1] for row in results])
 
