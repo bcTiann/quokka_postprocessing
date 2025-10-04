@@ -18,4 +18,5 @@ sample/
 .vscode/
 .DS_Store
 
-output_tables/
+output*/
+*.png/
