@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple
 import warnings
 
+import contextlib
+import io
+
+
 import numpy as np
 from joblib import Parallel, delayed
 from scipy.interpolate import RectBivariateSpline, griddata
@@ -58,6 +62,8 @@ def calculate_single_despotic_point(
     log_failures: bool = False,
     emitter_abundance: float = DEFAULT_EMITTER_ABUNDANCE,
     repeat_equilibrium: int = 0,
+    row_idx: int | None = None, 
+    col_idx: int | None = None,
 ) -> Tuple[float, float]:
     """Run DESPOTIC for one (nH, column density) pair.
 
@@ -74,7 +80,7 @@ def calculate_single_despotic_point(
             cell.comp.xoH2 = 0.1
             cell.comp.xpH2 = 0.4
             cell.comp.xHe = 0.1
-            cell.comp.mu = 0.6
+            # cell.comp.mu = 0.6
 
             cell.dust.alphaGD = 3.2e-34
             cell.dust.sigma10 = 2.0e-25
@@ -88,34 +94,59 @@ def calculate_single_despotic_point(
             cell.rad.TradDust = 0.0
             cell.rad.ionRate = 2.0e-17
             cell.rad.chi = 1.0
+            
+            cell.setTempEq()
 
             cell.addEmitter("CO", emitter_abundance)
 
             # print("="*50)
             # print(f"initial cell.Tg = {cell.Tg}")
             # print("="*50)
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                cell.setChemEq(network=NL99, evolveTemp="iterate")
 
-            cell.setChemEq(network=NL99, evolveTemp="iterate")
+                # print("+"*50)
+                # print(f"final cell.Tg = {cell.Tg}")
+                # print("+"*50)
 
-            # print("+"*50)
-            # print(f"final cell.Tg = {cell.Tg}")
-            # print("+"*50)
+                if repeat_equilibrium > 0:
+                    for _ in range(repeat_equilibrium):
+                        # print("$"*50)
+                        # print(f"initial cell.Tg = {cell.Tg}")
+                        # print("$"*50)
 
-            if repeat_equilibrium > 0:
-                for _ in range(repeat_equilibrium):
-                    # print("$"*50)
-                    # print(f"initial cell.Tg = {cell.Tg}")
-                    # print("$"*50)
+                        cell.setChemEq(network=NL99, evolveTemp="iterate")
 
-                    cell.setChemEq(network=NL99, evolveTemp="iterate")
+                        # print("+"*50)
+                        # print(f"final cell.Tg = {cell.Tg}")
+                        # print("+"*50)
 
-                    # print("+"*50)
-                    # print(f"final cell.Tg = {cell.Tg}")
-                    # print("+"*50)
+                lines = cell.lineLum("CO")
+                co_int_TB = lines[0]["intTB"]
+                final_Tg = float(cell.Tg)
 
-            lines = cell.lineLum("CO")
-            co_int_TB = lines[0]["intTB"]
-            return co_int_TB, cell.Tg
+            if (not np.isfinite(co_int_TB)) or (co_int_TB <= 0.0) or (not np.isfinite(final_Tg)) or (final_Tg <= 0.0):
+                row_str = "?" if row_idx is None else row_idx
+                col_str = "?" if col_idx is None else col_idx
+                index_info = f"(i={row_str}, j={col_str})"
+
+                diagnostics_msg = (
+                    "DESPOTIC returned an invalid state:\n"
+                    f"  intTB = {co_int_TB:.3e} K km/s\n"
+                    f"  Tg    = {final_Tg:.3e} K\n"
+                    f"  grid  = {index_info}\n"
+                    f"  nH    = {nH_val:.3e} cm^-3\n"
+                    f"  colDen= {colDen_val:.3e} cm^-2\n"
+                    f"  Tg guess = {guess:.3e} K\n"
+                    f"  repeat_equilibrium = {repeat_equilibrium}\n"
+                    f"  emitter_abundance  = {emitter_abundance:.3e}"
+                )
+
+                warnings.warn(diagnostics_msg, RuntimeWarning)
+                return float("nan"), float("nan")
+
+            return co_int_TB, final_Tg
         
         except Exception as exc:  # pragma: no cover - DESPOTIC exceptions vary
             if log_failures:
@@ -135,12 +166,14 @@ def _compute_row(
     *,
     repeat_equilibrium: int = 0,
     log_failures: bool = False,
+    row_idx: int,
 ) -> Tuple[List[float], List[float]]:
     
     co_row: List[float] = []
     tg_row: List[float] = []
 
-    for colDen in col_den_points:
+    for col_idx, colDen in enumerate(col_den_points):
+
         dynamic_guesses: Sequence[float] = guess_list
         if interpolator is not None:
             try:
@@ -160,7 +193,9 @@ def _compute_row(
             colDen_val=colDen,
             initial_Tg_guesses=dynamic_guesses,
             log_failures=log_failures,
-            repeat_equilibrium=repeat_equilibrium
+            repeat_equilibrium=repeat_equilibrium,
+            row_idx=row_idx,
+            col_idx=col_idx,
         )
 
         co_row.append(co_val)
@@ -196,8 +231,9 @@ def build_table(
             interpolator,
             repeat_equilibrium=repeat_equilibrium,
             log_failures=log_failures,
+            row_idx=row_idx,
         )
-        for nH in nH_iterable
+        for row_idx, nH in enumerate(nH_iterable)      
     )
 
     co_int_tb = np.array([row[0] for row in results])

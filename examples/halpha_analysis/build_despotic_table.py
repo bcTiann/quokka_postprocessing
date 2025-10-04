@@ -16,12 +16,12 @@ OUTPUT_DIR = Path("output_tables_direct")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 N_H_RANGE = (1e-4, 1e4)
 COL_DEN_RANGE = (1e18, 1e24)
-RESOLUTION_STEPS = (5, 50)
+RESOLUTION_STEPS = (5, 10)
 FILL = False
 TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
 PLOT_DPI = 600
 SHOW_PLOTS = False
-REPEAT = 8
+REPEAT = 2
 
 def plot_table(data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
     """Render and optionally display a lookup table heatmap."""
