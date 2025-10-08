@@ -88,6 +88,7 @@ def build_table_at_resolution(points: int, seed_table: DespoticTable | None, rep
             col_grid,
             TG_GUESSES,
             show_progress=True,
+            n_jobs=24
             repeat_equilibrium=repeat_equilibrium,
             log_failures=True
         )
