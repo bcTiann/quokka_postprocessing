@@ -28,9 +28,9 @@ cell = cloud()
 
 
 cell.Tg = 5
-cell.nH = 3199.2671377973843
+cell.nH = 24770.763
 # cell.nH = 3206.2671377973843
-cell.colDen = 1.6297508346206402e+22
+cell.colDen = 1.6297e+22
 
 
 co_line_map = []

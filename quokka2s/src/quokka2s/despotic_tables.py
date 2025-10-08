@@ -35,9 +35,12 @@ class LogGrid:
         if self.num_points < 2:
             raise ValueError("num_points must be >= 2")
 
-    def sample(self) -> np.ndarray:
-        return np.logspace(np.log10(self.min_value), np.log10(self.max_value), self.num_points)
+    # def sample(self) -> np.ndarray:
+    #     return np.logspace(np.log10(self.min_value), np.log10(self.max_value), self.num_points)
 
+    def sample(self) -> np.ndarray:
+        values = np.logspace(np.log10(self.min_value), np.log10(self.max_value), self.num_points)
+        return np.round(values, 6)
 
 @dataclass(frozen=True)
 class AttemptRecord:
