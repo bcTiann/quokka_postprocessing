@@ -540,6 +540,7 @@ def compute_average(
 
 
 
+
 __all__ = [
     "LogGrid",
     "DespoticTable",

@@ -12,6 +12,7 @@ from quokka2s.despotic_tables import (
     calculate_single_despotic_point,
 )
 from despotic.chemistry import NL99, NL99_GC, GOW
+from build_despotic_table import plot_table
 
 TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
 
@@ -119,6 +120,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    output_dir = args.output_npz.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tag = args.output_npz.stem.replace("table_", "")
+
     table = load_table(args.table_npz)
     new_table = recompute_low_co_cells(
         table,
@@ -129,6 +134,21 @@ def main(argv: Sequence[str] | None = None) -> None:
         repeat_equilibrium=args.repeat,
     )
 
+    recomputed_plot = output_dir / f"co_int_TB_{tag}.png"
+    plot_table(
+        table=new_table,
+        data=new_table.co_int_tb,
+        output_path=str(recomputed_plot),
+        title=f"DESPOTIC Lookup Table ({tag})",
+    )
+
+    tg_plot = output_dir / f"tg_final_{tag}.png"
+    plot_table(
+        table=new_table,
+        data=new_table.tg_final,
+        output_path=str(tg_plot),
+        title=f"DESPOTIC Gas Temperature ({tag})",
+    )
     np.savez_compressed(
         args.output_npz,
         co_int_tb=new_table.co_int_tb,
