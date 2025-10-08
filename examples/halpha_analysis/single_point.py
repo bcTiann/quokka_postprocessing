@@ -22,14 +22,14 @@ import config as cfg
 cell = cloud()
 
 
-cell.Tg = 6.421e+09
-cell.nH = 1.000e-04
-cell.colDen = 4.642e+18
+# cell.Tg = 6.421e+09
+# cell.nH = 1.000e-04
+# cell.colDen = 4.642e+18
 
 
-cell.Tg = 2.656e+03
-cell.nH = 5.995e-03
-cell.colDen = 2.154e+23
+cell.Tg = 100
+cell.nH = 1e-1
+cell.colDen = 1.151e+24
 
 
 co_line_map = []
@@ -40,7 +40,7 @@ cell.sigmaNT = 2.0e5
 cell.comp.xoH2 = 0.1
 cell.comp.xpH2 = 0.4
 cell.comp.xHe = 0.1
-# cell.comp.mu = 0.6
+
 
 cell.dust.alphaGD   = 3.2e-34    # Dust-gas coupling coefficient
 cell.dust.sigma10   = 2.0e-25    # Cross section for 10K thermal radiation
@@ -48,7 +48,7 @@ cell.dust.sigmaPE   = 1.0e-21    # Cross section for photoelectric heating
 cell.dust.sigmaISRF = 3.0e-22    # Cross section to the ISRF
 cell.dust.beta      = 2.0        # Dust spectral index
 cell.dust.Zd        = 1.0        # Abundance relative to Milky Way
-cell.Td             = 10.0       # Dust temperature
+cell.Td             = 10         # Dust temperature
 cell.rad.TCMB       = 2.73       # CMB temperature
 cell.rad.TradDust   = 0.0        # IR radiation field seen by the dust
 cell.rad.ionRate    = 2.0e-17    # Primary ionization rate
@@ -56,13 +56,18 @@ cell.rad.chi        = 1.0        # ISRF normalized to Solar neighborhood
 
 cell.addEmitter("CO", 8.0e-9)
 
-
+cell.comp.computeDerived(cell.nH)
 
 # --- 執行核心計算 ---
 cell.setTempEq()
-print(f"mu = {cell.comp.mu}")
+# print(f"mu = {cell.comp.mu}")
+print(f"Tg = {cell.Tg}")
+print(f"Td = {cell.Td}")
 
-cell.setChemEq(network=NL99, evolveTemp='iterate')
+converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
+print(f"converge = {converge}")
+print(f"Tg = {cell.Tg}")
+
 
 # --- 處理計算結果 ---
 lines = cell.lineLum("CO")
