@@ -5,7 +5,7 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
 from yt.units import K, mp, kb, mh, planck_constant, cm, m, s, g, erg
-from despotic.chemistry import NL99
+from despotic.chemistry import NL99, NL99_GC, GOW
 from despotic import cloud
 from tqdm import tqdm 
 import time
@@ -28,7 +28,8 @@ cell = cloud()
 
 
 cell.Tg = 5
-cell.nH = 3201.2671377973843
+cell.nH = 3199.2671377973843
+# cell.nH = 3206.2671377973843
 cell.colDen = 1.6297508346206402e+22
 
 
@@ -64,7 +65,7 @@ cell.comp.computeDerived(cell.nH)
 print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
 
-converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
+converge = cell.setChemEq(network=GOW, evolveTemp="iterateDust")
 print(f"converge = {converge}")
 
 
@@ -77,3 +78,16 @@ co_line_map.append(co_int_TB)
 
 print(f"co_line_map = {co_line_map}")
 print(f"Tg final = {cell.Tg}")
+
+
+# NL99_GC
+# co_line_map = [np.float64(26.647168610309297)]
+# Tg final = 5.131135278673986
+
+
+ #GOW
+# co_line_map = [np.float64(27.130430537040976)]
+# Tg final = 5.177461694980736
+
+# co_line_map = [np.float64(27.124421626015074)]
+# Tg final = 5.176960879841981

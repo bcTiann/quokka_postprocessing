@@ -17,7 +17,7 @@ from tqdm_joblib import tqdm_joblib
 
 
 from despotic import cloud
-from despotic.chemistry import NL99
+from despotic.chemistry import NL99, NL99_GC, GOW
 
 @dataclass(frozen=True)
 class LogGrid:
@@ -128,7 +128,7 @@ def calculate_single_despotic_point(
 
             # cell.setTempEq()
             Tg_setTempEq = cell.Tg
-            converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
+            converge = cell.setChemEq(network=NL99_GC, evolveTemp="iterateDust")
 
             # if converge:
             #     rates = cell.dEdt(sumOnly=True)

@@ -16,7 +16,7 @@ from quokka2s.despotic_tables import (
     fill_missing_values,
 )
 
-OUTPUT_DIR = Path("output_tables")
+OUTPUT_DIR = Path("output_tables_GC")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # N_H_RANGE = (1e-4, 1e4)
 # COL_DEN_RANGE = (1e18, 1e24)
