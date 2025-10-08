@@ -14,13 +14,13 @@ from quokka2s.despotic_tables import (
     fill_missing_values,
 )
 
-OUTPUT_DIR = Path("output_tables_filters")
+OUTPUT_DIR = Path("output_tables")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # N_H_RANGE = (1e-4, 1e4)
 # COL_DEN_RANGE = (1e18, 1e24)
 N_H_RANGE = (1e1, 1e5)
 COL_DEN_RANGE = (1e20, 1e23)
-RESOLUTION_STEPS = (5, 10)
+RESOLUTION_STEPS = (10, )
 FILL = False
 TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
 PLOT_DPI = 600
@@ -75,7 +75,8 @@ def build_table_at_resolution(points: int, seed_table: DespoticTable | None, rep
             col_grid,
             TG_GUESSES,
             show_progress=True,
-            repeat_equilibrium=repeat_equilibrium
+            repeat_equilibrium=repeat_equilibrium,
+            log_failures=True
         )
 
     interpolator = make_temperature_interpolator(
@@ -123,7 +124,6 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0) ->
 def main() -> None:
     previous_refined: DespoticTable | None = None
 
-
     for points in RESOLUTION_STEPS:
 
         tag = f"{points}x{points}"
@@ -149,9 +149,9 @@ def main() -> None:
             f"DESPOTIC Gas Temperature ({tag} raw)",
         )
 
-        if raw_table.failures:
-            failure_path = OUTPUT_DIR / f"failures_{tag}_raw.csv"
-            with failure_path.open("w", newline="") as fh:
+        if raw_table.attempts:
+            attempts_path = OUTPUT_DIR / f"attempts_{tag}_raw.csv"
+            with attempts_path.open("w", newline="") as fh:
                 writer = csv.writer(fh)
                 writer.writerow([
                     "row_idx",
@@ -162,10 +162,11 @@ def main() -> None:
                     "final_Tg",
                     "attempt_number",
                     "attempt_type",
+                    "converged",
                     "repeat_equilibrium",
                     "emitter_abundance",
                 ])
-                for record in raw_table.failures:
+                for record in raw_table.attempts:
                     writer.writerow([
                     record.row_idx,
                     record.col_idx,
@@ -175,12 +176,13 @@ def main() -> None:
                     record.final_Tg,
                     record.attempt_number,
                     record.attempt_type,
+                    record.converged,
                     record.repeat_equilibrium,
                     record.emitter_abundance,
                 ])
-            print(f"{len(raw_table.failures)} failures logged to {failure_path}")
+            print(f"{len(raw_table.attempts)} attempts logged to {attempts_path}")
         else:
-            print("No DESPOTIC failures recorded for this table.")
+            print("No DESPOTIC attempts recorded for this table.")
         
         next_seed = raw_table
 ##########################################################################################

@@ -40,15 +40,16 @@ class LogGrid:
 
 
 @dataclass(frozen=True)
-class FailureRecord:
+class AttemptRecord:
     row_idx: int | None
     col_idx: int | None
     nH: float
     colDen: float
     tg_guess: float
-    final_Tg: float | None
+    final_Tg: float
     attempt_number: int
-    attempt_type: str # single_attempt / all_guesses_fails
+    attempt_type: str  # "normal_attempt" / "all_guesses_failed"
+    converged: bool
     repeat_equilibrium: int
     emitter_abundance: float
 
@@ -63,7 +64,7 @@ class DespoticTable:
     tg_final: np.ndarray
     nH_values: np.ndarray
     col_density_values: np.ndarray
-    failures: Tuple[FailureRecord, ...] = field(default_factory=tuple)
+    attempts: Tuple[AttemptRecord, ...] = field(default_factory=tuple)
 
     def as_tuple(self) -> Tuple[np.ndarray, np.ndarray]:
         return self.co_int_tb, self.tg_final
@@ -83,7 +84,7 @@ def calculate_single_despotic_point(
     repeat_equilibrium: int = 0,
     row_idx: int | None = None, 
     col_idx: int | None = None,
-    failure_log: list[FailureRecord] | None = None
+    attempt_log: list[AttemptRecord] | None = None
 ) -> Tuple[float, float]:
     """Run DESPOTIC for one (nH, column density) pair.
 
@@ -91,7 +92,7 @@ def calculate_single_despotic_point(
     """
     last_guess: float | None = None
     attempt_number = 0
-
+    last_final_tg = float("nan")
 
     for guess in initial_Tg_guesses:
         attempt_number += 1
@@ -124,7 +125,8 @@ def calculate_single_despotic_point(
 
             cell.addEmitter("CO", emitter_abundance)
 
-            # cell.setTempEq()
+            cell.setTempEq()
+
             converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
 
             # if converge:
@@ -133,6 +135,8 @@ def calculate_single_despotic_point(
             print("="*40)
             print(f"({row_idx}, {col_idx}) converge: {converge}")
             print("="*40)
+
+
             if not converge:
                 print("="*40)
                 print(f"({row_idx}, {col_idx}) converge failed :")
@@ -141,9 +145,9 @@ def calculate_single_despotic_point(
                 print(f"colDen = {cell.colDen}")
                 print("="*40)
 
-                if failure_log is not None:
-                    failure_log.append(
-                        FailureRecord(
+                if attempt_log is not None:
+                    attempt_log.append(
+                        AttemptRecord(
                             row_idx=row_idx,
                             col_idx=col_idx,
                             nH=cell.nH,
@@ -151,6 +155,7 @@ def calculate_single_despotic_point(
                             tg_guess=guess,
                             attempt_number=attempt_number,
                             attempt_type="single_attempt",
+                            converged=False,
                             final_Tg=float(cell.Tg),
                             repeat_equilibrium=repeat_equilibrium,
                             emitter_abundance=emitter_abundance,
@@ -158,35 +163,52 @@ def calculate_single_despotic_point(
                     )
                 continue
 
-            # if repeat_equilibrium > 0:
-            #     for _ in range(repeat_equilibrium):
-            #         cell.setChemEq(network=NL99, evolveTemp="iterate")
+            else:
+                if attempt_log is not None:
+                    attempt_log.append(
+                            AttemptRecord(
+                                row_idx=row_idx,
+                                col_idx=col_idx,
+                                nH=cell.nH,
+                                colDen=cell.colDen,
+                                tg_guess=guess,
+                                attempt_number=attempt_number,
+                                attempt_type="successful",
+                                converged=True,
+                                final_Tg=float(cell.Tg),
+                                repeat_equilibrium=repeat_equilibrium,
+                                emitter_abundance=emitter_abundance,
+                            )
+                        )
+                # if repeat_equilibrium > 0:
+                #     for _ in range(repeat_equilibrium):
+                #         cell.setChemEq(network=NL99, evolveTemp="iterate")
+                lines = cell.lineLum("CO")
+                co_int_TB = lines[0]["intTB"]
+                final_Tg = float(cell.Tg)
+                
+                return co_int_TB, final_Tg
+            # if (not np.isfinite(co_int_TB)) or (co_int_TB < 0.0) or (not np.isfinite(final_Tg)) or (final_Tg < 0.0):
+            #     row_str = "?" if row_idx is None else row_idx
+            #     col_str = "?" if col_idx is None else col_idx
+            #     index_info = f"(i={row_str}, j={col_str})"
 
-            lines = cell.lineLum("CO")
-            co_int_TB = lines[0]["intTB"]
-            final_Tg = float(cell.Tg)
+            #     diagnostics_msg = (
+            #         "DESPOTIC returned an invalid state:\n"
+            #         f"  intTB = {co_int_TB:.3e} K km/s\n"
+            #         f"  Tg    = {final_Tg:.3e} K\n"
+            #         f"  grid  = {index_info}\n"
+            #         f"  nH    = {nH_val:.3e} cm^-3\n"
+            #         f"  colDen= {colDen_val:.3e} cm^-2\n"
+            #         f"  Tg guess = {guess:.3e} K\n"
+            #         f"  repeat_equilibrium = {repeat_equilibrium}\n"
+            #         f"  emitter_abundance  = {emitter_abundance:.3e}"
+            #     )
 
-            if (not np.isfinite(co_int_TB)) or (co_int_TB < 0.0) or (not np.isfinite(final_Tg)) or (final_Tg < 0.0):
-                row_str = "?" if row_idx is None else row_idx
-                col_str = "?" if col_idx is None else col_idx
-                index_info = f"(i={row_str}, j={col_str})"
+            #     warnings.warn(diagnostics_msg, RuntimeWarning)
+            #     return float("nan"), float("nan")
 
-                diagnostics_msg = (
-                    "DESPOTIC returned an invalid state:\n"
-                    f"  intTB = {co_int_TB:.3e} K km/s\n"
-                    f"  Tg    = {final_Tg:.3e} K\n"
-                    f"  grid  = {index_info}\n"
-                    f"  nH    = {nH_val:.3e} cm^-3\n"
-                    f"  colDen= {colDen_val:.3e} cm^-2\n"
-                    f"  Tg guess = {guess:.3e} K\n"
-                    f"  repeat_equilibrium = {repeat_equilibrium}\n"
-                    f"  emitter_abundance  = {emitter_abundance:.3e}"
-                )
-
-                warnings.warn(diagnostics_msg, RuntimeWarning)
-                return float("nan"), float("nan")
-
-            return co_int_TB, final_Tg
+                
         
         except Exception as exc:  # pragma: no cover - DESPOTIC exceptions vary
             if log_failures:
@@ -196,17 +218,18 @@ def calculate_single_despotic_point(
                 )
             continue
 
-    if failure_log is not None:
-        failure_log.append(
-            FailureRecord(
+    if attempt_log is not None:
+        attempt_log.append(
+            AttemptRecord(
                 row_idx=row_idx,
                 col_idx=col_idx,
                 nH=nH_val,
                 colDen=colDen_val,
                 tg_guess=last_guess if last_guess is not None else float("nan"),
-                final_Tg=cell.Tg,
+                final_Tg=last_final_tg,
                 attempt_number=attempt_number,
                 attempt_type="all_guesses_failed",
+                converged=False,
                 repeat_equilibrium=repeat_equilibrium,
                 emitter_abundance=emitter_abundance,
             )
@@ -220,14 +243,17 @@ def _compute_row(
     guess_list: Sequence[float],
     interpolator: Optional[RectBivariateSpline],
     *,
-    row_failures: list[FailureRecord] = [],
+    row_logs: list[AttemptRecord] | None = None,
     repeat_equilibrium: int = 0,
     log_failures: bool = False,
     row_idx: int,
-) -> Tuple[List[float], List[float]]:
+) -> Tuple[List[float], List[float], list[AttemptRecord]]:
     
     co_row: List[float] = []
     tg_row: List[float] = []
+    
+    if row_logs is None:
+        row_logs = []  
 
     for col_idx, colDen in enumerate(col_den_points):
 
@@ -253,13 +279,13 @@ def _compute_row(
             repeat_equilibrium=repeat_equilibrium,
             row_idx=row_idx,
             col_idx=col_idx,
-            failure_log=row_failures
+            attempt_log=row_logs
         )
 
         co_row.append(co_val)
         tg_row.append(tg_val)
 
-    return co_row, tg_row, row_failures
+    return co_row, tg_row, row_logs
 
 
 def build_table(
@@ -301,21 +327,19 @@ def build_table(
     if progress_bar is not None:
         progress_bar.close()
     
-    # co_int_tb = np.array([row[0] for row in results])
-    # tg_final = np.array([row[1] for row in results])
 
-    co_rows, tg_rows, failure_lists = zip(*results)
+    co_rows, tg_rows, attempt_lists = zip(*results)
     co_int_tb = np.array(co_rows)
     tg_final = np.array(tg_rows)
     from itertools import chain
-    failures = tuple(chain.from_iterable(failure_lists))
+    attempts = tuple(chain.from_iterable(attempt_lists))
 
     return DespoticTable(
         co_int_tb=co_int_tb,
         tg_final=tg_final,
         nH_values=nH_points,
         col_density_values=col_den_points,
-        failures=failures
+        attempts=attempts
     )
 
 def refine_table(
@@ -449,7 +473,7 @@ def fill_missing_values(table: DespoticTable) -> DespoticTable:
     tg_final=tg_filled,
     nH_values=table.nH_values,
     col_density_values=table.col_density_values,
-    failures=table.failures,
+    attempts=table.attempts,
 )
 
 
