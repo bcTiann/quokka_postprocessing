@@ -94,7 +94,7 @@ def calculate_single_despotic_point(
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
-
+    Tg_setTempEq = float("nan")
     for guess in initial_Tg_guesses:
         attempt_number += 1
         last_guess = guess
@@ -226,16 +226,18 @@ def calculate_single_despotic_point(
             AttemptRecord(
                 row_idx=row_idx,
                 col_idx=col_idx,
-                nH=nH_val,
-                colDen=colDen_val,
-                tg_guess=last_guess if last_guess is not None else float("nan"),
-                final_Tg=last_final_tg,
+                nH=cell.nH,
+                colDen=cell.colDen,
+                tg_guess=last_final_tg,
+                Tg_setTempEq=Tg_setTempEq,
                 attempt_number=attempt_number,
-                attempt_type="all_guesses_failed",
+                attempt_type="single_attempt",
                 converged=False,
+                final_Tg=float(cell.Tg),
                 repeat_equilibrium=repeat_equilibrium,
                 emitter_abundance=emitter_abundance,
-            )
+                        )
+
         )
     return float("nan"), float("nan")
 
