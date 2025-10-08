@@ -40,7 +40,7 @@ class LogGrid:
 
     def sample(self) -> np.ndarray:
         values = np.logspace(np.log10(self.min_value), np.log10(self.max_value), self.num_points)
-        return np.round(values, 6)
+        return np.round(values, 2)
 
 @dataclass(frozen=True)
 class AttemptRecord:
