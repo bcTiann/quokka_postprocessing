@@ -46,6 +46,7 @@ class AttemptRecord:
     nH: float
     colDen: float
     tg_guess: float
+    Tg_setTempEq: float
     final_Tg: float
     attempt_number: int
     attempt_type: str  # "normal_attempt" / "all_guesses_failed"
@@ -126,7 +127,7 @@ def calculate_single_despotic_point(
             cell.addEmitter("CO", emitter_abundance)
 
             cell.setTempEq()
-
+            Tg_setTempEq = cell.Tg
             converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
 
             # if converge:
@@ -153,6 +154,7 @@ def calculate_single_despotic_point(
                             nH=cell.nH,
                             colDen=cell.colDen,
                             tg_guess=guess,
+                            Tg_setTempEq=Tg_setTempEq,
                             attempt_number=attempt_number,
                             attempt_type="single_attempt",
                             converged=False,
@@ -172,6 +174,7 @@ def calculate_single_despotic_point(
                                 nH=cell.nH,
                                 colDen=cell.colDen,
                                 tg_guess=guess,
+                                Tg_setTempEq=Tg_setTempEq,
                                 attempt_number=attempt_number,
                                 attempt_type="successful",
                                 converged=True,
