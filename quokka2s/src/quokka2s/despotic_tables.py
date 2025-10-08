@@ -206,7 +206,7 @@ def calculate_single_despotic_point(
                 tg_guess=last_guess if last_guess is not None else float("nan"),
                 final_Tg=cell.Tg,
                 attempt_number=attempt_number,
-                attempt_type="all_guesses_failed"
+                attempt_type="all_guesses_failed",
                 repeat_equilibrium=repeat_equilibrium,
                 emitter_abundance=emitter_abundance,
             )
