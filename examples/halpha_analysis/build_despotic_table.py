@@ -7,6 +7,8 @@ from scipy.interpolate import griddata
 from pathlib import Path
 from typing import Sequence
 import time
+from despotic.chemistry import NL99, NL99_GC, GOW
+import argparse
 from quokka2s.despotic_tables import (
     DespoticTable,
     LogGrid,
@@ -16,26 +18,37 @@ from quokka2s.despotic_tables import (
     fill_missing_values,
 )
 
-OUTPUT_DIR = Path("output_tables_GC")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# OUTPUT_DIR = Path("output_tables_GC")
+# OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 # N_H_RANGE = (1e-4, 1e4)
 # COL_DEN_RANGE = (1e18, 1e24)
 N_H_RANGE = (1e1, 1e5)
 COL_DEN_RANGE = (1e20, 1e23)
-DEFAULT_RESOLUTION_STEPS = (10,)
-FILL = False
 TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
 PLOT_DPI = 600
 SHOW_PLOTS = False
-REPEAT = 0
 
-def parse_resolution_steps(argv: Sequence[str]) -> tuple[int, ...]:
-    if len(argv) <= 1:
-        return DEFAULT_RESOLUTION_STEPS
-    try:
-        return tuple(int(arg) for arg in argv[1:])
-    except ValueError as exc:
-        raise SystemExit(f"Resolution steps must be integers: {exc}") from exc
+NETWORK_MAP = {
+    "NL99": NL99,
+    "NL99_GC": NL99_GC,
+    "GOW": GOW,
+}
+def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build DESPOTIC tables with selectable resolution/network/output."
+    )
+    parser.add_argument("resolution", type=int, nargs="+",
+                        help="grid resolution: 10 or 10 20")
+    parser.add_argument("network", choices=NETWORK_MAP.keys(),
+                        help="chemical network : NL99 / NL99_GC / GOW")
+    parser.add_argument("output_dir", type=Path,
+                        help="output dir (auto create)")
+    parser.add_argument("--repeat", type=int, default=0,
+                        help="repeat_equilibrium (defualt=0)")
+    parser.add_argument("--fill", action="store_true",
+                        help="run fill_missing_values after table created")
+    return parser.parse_args(argv[1:])
 
 
 # def plot_table(data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
@@ -75,7 +88,10 @@ def save_table(prefix: str, table: DespoticTable) -> None:
 
 
 
-def build_table_at_resolution(points: int, seed_table: DespoticTable | None, repeat_equilibrium: int = 0) -> DespoticTable:
+def build_table_at_resolution(points: int, 
+                              seed_table: DespoticTable | None, 
+                              repeat_equilibrium: int = 0,
+                              chem_network=NL99) -> DespoticTable:
     suffix = " (seeded by previous refinement)" if seed_table else ""
     print(f"Building DESPOTIC table at resolution {points}x{points}{suffix}")
 
@@ -87,6 +103,7 @@ def build_table_at_resolution(points: int, seed_table: DespoticTable | None, rep
             nH_grid,
             col_grid,
             TG_GUESSES,
+            chem_network=chem_network,
             show_progress=True,
             n_jobs=24,
             repeat_equilibrium=repeat_equilibrium,
@@ -103,6 +120,7 @@ def build_table_at_resolution(points: int, seed_table: DespoticTable | None, rep
         nH_grid,
         col_grid,
         TG_GUESSES,
+        chem_network=chem_network,
         interpolator=interpolator,
         show_progress=True,
         repeat_equilibrium=repeat_equilibrium
@@ -135,39 +153,54 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0) ->
     )
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
+    args = parse_cli_args(sys.argv if argv is None else argv)
+    output_dir: Path = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    resolution_steps = tuple(args.resolution)
+    chem_network = NETWORK_MAP[args.network]
+    repeat_equilibrium = args.repeat
+    fill_requested = args.fill
+
     previous_refined: DespoticTable | None = None
-    resolution_steps = parse_resolution_steps(sys.argv)
+
+
 
     for points in resolution_steps:
 
         tag = f"{points}x{points}"
 ##########################################################################################
         # Build Table
-        raw_table = build_table_at_resolution(points, previous_refined, repeat_equilibrium=REPEAT)
+        print(f"Building DESPOTIC table at resolution {tag}")
+        raw_table = build_table_at_resolution(
+            points,
+            previous_refined,
+            repeat_equilibrium=repeat_equilibrium,
+            chem_network=chem_network,   
+        )
 
         # Save Table
-        raw_prefix = OUTPUT_DIR / f"table_{tag}_raw"
+        raw_prefix = output_dir / f"table_{tag}_raw"
         save_table(raw_prefix, raw_table)
         print(f"Raw {tag} table saved to {raw_prefix.with_suffix('.npz')}")
         
         # Plot Table
-        raw_plot_path = OUTPUT_DIR / f"co_int_TB_{tag}_raw.png"
         plot_table(
             table=raw_table,
             data=raw_table.co_int_tb,
-            output_path=str(raw_plot_path),
+            output_path=str(output_dir / f"co_int_TB_{tag}_raw.png"),
             title=f"DESPOTIC Lookup Table ({tag} raw)",
         )
         plot_table(
             table=raw_table,
             data=raw_table.tg_final,
-            output_path=str(OUTPUT_DIR / f"tg_final_{tag}_raw.png"),
+            output_path=str(output_dir / f"tg_final_{tag}_raw.png"),
             title=f"DESPOTIC Gas Temperature ({tag} raw)",
         )
 
         if raw_table.attempts:
-            attempts_path = OUTPUT_DIR / f"attempts_{tag}_raw.csv"
+            attempts_path = output_dir / f"attempts_{tag}_raw.csv"
             with attempts_path.open("w", newline="") as fh:
                 writer = csv.writer(fh)
                 writer.writerow([
@@ -236,19 +269,15 @@ def main() -> None:
 ##########################################################################################
 
 
-        if FILL:
+        if fill_requested:
 
             # Fill table
-            filled_table = fill_missing_values(raw_table)
-            
-
-            # Save Table
-            filled_prefix = OUTPUT_DIR / f"table_{tag}_refined_filled"
-            save_table(filled_prefix, filled_table)
-            print(f"Filled {tag} table saved to {filled_prefix.with_suffix('.npz')}")
+            filled = fill_missing_values(raw_table)
+            filled_prefix = output_dir / f"table_{tag}_filled"
+            save_table(filled_prefix, filled)
             
             # Plot Table
-            filled_plot_path = OUTPUT_DIR / f"co_int_TB_{tag}_filled.png"
+            filled_plot_path = output_dir / f"co_int_TB_{tag}_filled.png"
 
             plot_table(
                 table=raw_table,
@@ -260,11 +289,11 @@ def main() -> None:
             plot_table(
                 table=raw_table,
                 data=raw_table.tg_final,
-                output_path=str(OUTPUT_DIR / f"tg_final_{tag}_filled.png"),
+                output_path=str(output_dir / f"tg_final_{tag}_filled.png"),
                 title=f"DESPOTIC Gas Temperature ({tag} raw)",
             )
 
-            next_seed = filled_table
+            next_seed = filled
 
         previous_refined = next_seed
 

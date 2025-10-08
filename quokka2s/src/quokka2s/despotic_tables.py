@@ -86,6 +86,7 @@ def calculate_single_despotic_point(
     log_failures: bool = False,
     emitter_abundance: float = DEFAULT_EMITTER_ABUNDANCE,
     repeat_equilibrium: int = 0,
+    chem_network=NL99, 
     row_idx: int | None = None, 
     col_idx: int | None = None,
     attempt_log: list[AttemptRecord] | None = None
@@ -97,7 +98,7 @@ def calculate_single_despotic_point(
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
-    Tg_setTempEq = float("nan")
+    last_tg_set_temp_eq = float("nan")
     for guess in initial_Tg_guesses:
         attempt_number += 1
         last_guess = guess
@@ -130,8 +131,8 @@ def calculate_single_despotic_point(
             cell.addEmitter("CO", emitter_abundance)
 
             # cell.setTempEq()
-            Tg_setTempEq = cell.Tg
-            converge = cell.setChemEq(network=NL99_GC, evolveTemp="iterateDust")
+            last_tg_set_temp_eq = float(cell.Tg)
+            converge = cell.setChemEq(network=chem_network, evolveTemp="iterateDust")
 
             # if converge:
             #     rates = cell.dEdt(sumOnly=True)
@@ -157,7 +158,7 @@ def calculate_single_despotic_point(
                             nH=cell.nH,
                             colDen=cell.colDen,
                             tg_guess=guess,
-                            Tg_setTempEq=Tg_setTempEq,
+                            Tg_setTempEq=last_tg_set_temp_eq,
                             attempt_number=attempt_number,
                             attempt_type="single_attempt",
                             converged=False,
@@ -166,6 +167,7 @@ def calculate_single_despotic_point(
                             emitter_abundance=emitter_abundance,
                         )
                     )
+                last_final_tg = float(cell.Tg)
                 continue
 
             else:
@@ -177,7 +179,7 @@ def calculate_single_despotic_point(
                                 nH=cell.nH,
                                 colDen=cell.colDen,
                                 tg_guess=guess,
-                                Tg_setTempEq=Tg_setTempEq,
+                                Tg_setTempEq=last_tg_set_temp_eq,
                                 attempt_number=attempt_number,
                                 attempt_type="successful",
                                 converged=True,
@@ -186,6 +188,7 @@ def calculate_single_despotic_point(
                                 emitter_abundance=emitter_abundance,
                             )
                         )
+                last_final_tg = float(cell.Tg)
                 # if repeat_equilibrium > 0:
                 #     for _ in range(repeat_equilibrium):
                 #         cell.setChemEq(network=NL99, evolveTemp="iterate")
@@ -229,14 +232,14 @@ def calculate_single_despotic_point(
             AttemptRecord(
                 row_idx=row_idx,
                 col_idx=col_idx,
-                nH=cell.nH,
-                colDen=cell.colDen,
-                tg_guess=last_final_tg,
-                Tg_setTempEq=Tg_setTempEq,
+                nH=nH_val,
+                colDen=colDen_val,
+                tg_guess=last_guess if last_guess is not None else float("nan"),
+                Tg_setTempEq=last_tg_set_temp_eq,
                 attempt_number=attempt_number,
-                attempt_type="single_attempt",
+                attempt_type="all_guesses_failed",
                 converged=False,
-                final_Tg=float(cell.Tg),
+                final_Tg=last_final_tg,
                 repeat_equilibrium=repeat_equilibrium,
                 emitter_abundance=emitter_abundance,
                         )
@@ -251,6 +254,7 @@ def _compute_row(
     guess_list: Sequence[float],
     interpolator: Optional[RectBivariateSpline],
     *,
+    chem_network=NL99,
     row_logs: list[AttemptRecord] | None = None,
     repeat_equilibrium: int = 0,
     log_failures: bool = False,
@@ -285,6 +289,7 @@ def _compute_row(
             initial_Tg_guesses=dynamic_guesses,
             log_failures=log_failures,
             repeat_equilibrium=repeat_equilibrium,
+            chem_network=chem_network,
             row_idx=row_idx,
             col_idx=col_idx,
             attempt_log=row_logs
@@ -301,6 +306,7 @@ def build_table(
     col_den_grid: LogGrid,
     tg_guesses: Sequence[float],
     *,
+    chem_network=NL99,
     interpolator: Optional[RectBivariateSpline] = None,
     n_jobs: int = -1,
     repeat_equilibrium: int = 0,
@@ -326,6 +332,7 @@ def build_table(
                 tg_guesses,
                 interpolator,
                 repeat_equilibrium=repeat_equilibrium,
+                chem_network=chem_network,
                 log_failures=log_failures,
                 row_idx=row_idx,
             )
