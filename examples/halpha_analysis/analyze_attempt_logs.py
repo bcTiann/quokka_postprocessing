@@ -20,6 +20,7 @@ class PointSummary:
     first_attempt_success: bool
     final_converged: bool
     final_attempt_type: str
+    last_attempt: Dict[str, str] | None
 
 
 def _to_bool(value: str | bool | None) -> bool:
@@ -75,6 +76,7 @@ def load_attempts(csv_path: Path) -> Dict[Tuple[int, int], PointSummary]:
             first_attempt_success=bool(first_attempt_success),
             final_converged=bool(final_converged),
             final_attempt_type=attempts[-1].get("attempt_type", ""),
+            last_attempt=dict(attempts[-1]) if attempts else None,
         )
 
     return summaries
@@ -110,6 +112,26 @@ def summarise_points(points: Dict[Tuple[int, int], PointSummary]) -> str:
     if never_converged:
         sample = ", ".join(f"({i}, {j})" for i, j in never_converged[:5])
         lines.append(f"  Example non-converged cells: {sample}")
+        lines.append("  Detailed non-converged attempts:")
+        for (row_idx, col_idx) in never_converged[:10]:
+            detail = points[(row_idx, col_idx)]
+            last = detail.last_attempt or {}
+            info = {
+                "attempts": detail.attempts,
+                "last_type": detail.final_attempt_type,
+                "tg_guess": last.get("tg_guess"),
+                "final_Tg": last.get("final_Tg"),
+                "nH": last.get("nH"),
+                "colDen": last.get("colDen"),
+            }
+            lines.append(
+                "    ({row}, {col}) attempts={attempts} last={last_type} "
+                "tg_guess={tg_guess} final_Tg={final_Tg} nH={nH} colDen={colDen}".format(
+                    row=row_idx,
+                    col=col_idx,
+                    **info,
+                )
+            )
 
     return "\n".join(lines)
 
