@@ -1,9 +1,11 @@
 import numpy as np
 import csv
+import sys
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from scipy.interpolate import griddata
 from pathlib import Path
+from typing import Sequence
 import time
 from quokka2s.despotic_tables import (
     DespoticTable,
@@ -20,12 +22,21 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # COL_DEN_RANGE = (1e18, 1e24)
 N_H_RANGE = (1e1, 1e5)
 COL_DEN_RANGE = (1e20, 1e23)
-RESOLUTION_STEPS = (10, )
+DEFAULT_RESOLUTION_STEPS = (10,)
 FILL = False
 TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
 PLOT_DPI = 600
 SHOW_PLOTS = False
 REPEAT = 0
+
+def parse_resolution_steps(argv: Sequence[str]) -> tuple[int, ...]:
+    if len(argv) <= 1:
+        return DEFAULT_RESOLUTION_STEPS
+    try:
+        return tuple(int(arg) for arg in argv[1:])
+    except ValueError as exc:
+        raise SystemExit(f"Resolution steps must be integers: {exc}") from exc
+
 
 def plot_table(data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
     """Render and optionally display a lookup table heatmap."""
@@ -123,8 +134,9 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0) ->
 
 def main() -> None:
     previous_refined: DespoticTable | None = None
+    resolution_steps = parse_resolution_steps(sys.argv)
 
-    for points in RESOLUTION_STEPS:
+    for points in resolution_steps:
 
         tag = f"{points}x{points}"
 ##########################################################################################
