@@ -126,7 +126,7 @@ def calculate_single_despotic_point(
 
             cell.addEmitter("CO", emitter_abundance)
 
-            cell.setTempEq()
+            # cell.setTempEq()
             Tg_setTempEq = cell.Tg
             converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
 
