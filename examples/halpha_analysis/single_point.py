@@ -27,9 +27,9 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 100
-cell.nH = 1e-1
-cell.colDen = 1.151e+24
+cell.Tg = 5
+cell.nH = 3201.2671377973843
+cell.colDen = 1.6297508346206402e+22
 
 
 co_line_map = []
@@ -59,14 +59,13 @@ cell.addEmitter("CO", 8.0e-9)
 cell.comp.computeDerived(cell.nH)
 
 # --- 執行核心計算 ---
-cell.setTempEq()
+# cell.setTempEq()
 # print(f"mu = {cell.comp.mu}")
 print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
 
 converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
 print(f"converge = {converge}")
-print(f"Tg = {cell.Tg}")
 
 
 # --- 處理計算結果 ---

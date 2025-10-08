@@ -38,22 +38,24 @@ def parse_resolution_steps(argv: Sequence[str]) -> tuple[int, ...]:
         raise SystemExit(f"Resolution steps must be integers: {exc}") from exc
 
 
-def plot_table(data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
-    """Render and optionally display a lookup table heatmap."""
+# def plot_table(data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
+def plot_table(*, table: DespoticTable, data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
+    """a lookup table heatmap."""
+
     masked = np.ma.masked_where(np.isnan(data), data)
 
+    X, Y = np.meshgrid(table.col_density_values, table.nH_values)
+
     fig, ax = plt.subplots(figsize=(8, 6))
-    image = ax.imshow(
-        masked,
-        origin="lower",
-        cmap="viridis",
-        norm=LogNorm(),
-    )
-    cbar = fig.colorbar(image, ax=ax)
-    cbar.set_label("CO Integrated Brightness Temp (K km/s)")
-    ax.set_xlabel("Column Density Index")
-    ax.set_ylabel("nH Density Index")
+    mesh = ax.pcolormesh(X, Y, masked, shading="auto", cmap="viridis", norm=LogNorm())
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Column Density (cm$^{-2}$)")
+    ax.set_ylabel("n$_\\mathrm{H}$ (cm$^{-3}$)")
     ax.set_title(title)
+
+    cbar = fig.colorbar(mesh, ax=ax)
+    cbar.set_label("CO Integrated Brightness Temp (K km/s)")
 
     fig.savefig(output_path, dpi=PLOT_DPI, bbox_inches="tight")
     if show:
@@ -151,14 +153,16 @@ def main() -> None:
         # Plot Table
         raw_plot_path = OUTPUT_DIR / f"co_int_TB_{tag}_raw.png"
         plot_table(
-            raw_table.co_int_tb,
-            str(raw_plot_path),
-            f"DESPOTIC Lookup Table ({tag} raw)",
+            table=raw_table,
+            data=raw_table.co_int_tb,
+            output_path=str(raw_plot_path),
+            title=f"DESPOTIC Lookup Table ({tag} raw)",
         )
         plot_table(
-            raw_table.tg_final,
-            str(OUTPUT_DIR / f"tg_final_{tag}_raw.png"),
-            f"DESPOTIC Gas Temperature ({tag} raw)",
+            table=raw_table,
+            data=raw_table.tg_final,
+            output_path=str(OUTPUT_DIR / f"tg_final_{tag}_raw.png"),
+            title=f"DESPOTIC Gas Temperature ({tag} raw)",
         )
 
         if raw_table.attempts:
@@ -244,18 +248,20 @@ def main() -> None:
             
             # Plot Table
             filled_plot_path = OUTPUT_DIR / f"co_int_TB_{tag}_filled.png"
+
             plot_table(
-                filled_table.co_int_tb,
-                str(filled_plot_path),
-                f"DESPOTIC Lookup refine Table ({tag} filled)",
+                table=raw_table,
+                data=raw_table.co_int_tb,
+                output_path=str(filled_plot_path),
+                title=f"DESPOTIC Lookup Table ({tag} raw)",
             )
 
             plot_table(
-                filled_table.tg_final,
-                str(OUTPUT_DIR / f"tg_final_{tag}_filled.png"),
-                f"DESPOTIC Gas Temperature ({tag} filled)",
+                table=raw_table,
+                data=raw_table.tg_final,
+                output_path=str(OUTPUT_DIR / f"tg_final_{tag}_filled.png"),
+                title=f"DESPOTIC Gas Temperature ({tag} raw)",
             )
-
 
             next_seed = filled_table
 
