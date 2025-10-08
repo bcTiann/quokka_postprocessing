@@ -6,9 +6,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import numpy as np
+
 
 ATTEMPT_FILE_PATTERN = "attempts_*.csv"
 DEFAULT_OUTPUT_DIR = Path("output_tables")
+CO_INT_THRESHOLD = 1.0e-6
+LOW_CO_PRINT_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -141,6 +145,67 @@ def find_attempt_files(directory: Path) -> List[Path]:
     return sorted(directory.glob(ATTEMPT_FILE_PATTERN))
 
 
+def load_table_npz(csv_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Load table arrays corresponding to an attempt log CSV.
+
+    Expects the matching file to be named like ``table_*.npz`` beside the CSV.
+    """
+    table_stem = csv_path.stem.replace("attempts_", "table_")
+    table_path = csv_path.with_name(f"{table_stem}.npz")
+    if not table_path.exists():
+        return None
+
+    with np.load(table_path) as data:
+        try:
+            co_int = data["co_int_tb"]
+            tg_final = data["tg_final"]
+            nH_values = data["nH"]
+            col_values = data["col_density"]
+        except KeyError:
+            return None
+
+    return co_int, tg_final, nH_values, col_values
+
+
+def summarise_low_co_points(
+    co_int: np.ndarray,
+    tg_final: np.ndarray,
+    nH_values: np.ndarray,
+    col_values: np.ndarray,
+    *,
+    threshold: float = CO_INT_THRESHOLD,
+    limit: int = LOW_CO_PRINT_LIMIT,
+) -> str:
+    """Generate a summary of cells whose CO intensity falls below ``threshold``."""
+    mask = np.isfinite(co_int) & (co_int < threshold)
+    if not np.any(mask):
+        return f"  No cells with CO intensity < {threshold:g}."
+
+    indices = np.argwhere(mask)
+    lines = [
+        f"  Cells with CO intensity < {threshold:g}: {indices.shape[0]} total"
+    ]
+
+    for row_idx, col_idx in indices[:limit]:
+        lines.append(
+            "    (row={row}, col={col}) nH={nH:.3e} cm^-3 colDen={col_den:.3e} cm^-2 "
+            "CO={co:.3e} Tg={tg:.3e} K".format(
+                row=row_idx,
+                col=col_idx,
+                nH=nH_values[row_idx],
+                col_den=col_values[col_idx],
+                co=co_int[row_idx, col_idx],
+                tg=tg_final[row_idx, col_idx],
+            )
+        )
+
+    remaining = indices.shape[0] - min(limit, indices.shape[0])
+    if remaining > 0:
+        lines.append(f"    … and {remaining} more.")
+
+    return "\n".join(lines)
+
+
 def main(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
     csv_files = find_attempt_files(output_dir)
     if not csv_files:
@@ -151,6 +216,20 @@ def main(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         print(csv_path.name)
         summaries = load_attempts(csv_path)
         print(summarise_points(summaries))
+
+        table_arrays = load_table_npz(csv_path)
+        if table_arrays is not None:
+            co_int, tg_final, nH_values, col_values = table_arrays
+            print(
+                summarise_low_co_points(
+                    co_int,
+                    tg_final,
+                    nH_values,
+                    col_values,
+                )
+            )
+        else:
+            print("  Matching table_*.npz not found or invalid; skipping CO threshold check.")
         print()
 
 
