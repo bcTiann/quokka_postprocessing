@@ -36,20 +36,25 @@ def _to_bool(value: str | bool | None) -> bool:
     return value.strip().lower() in {"true", "1", "yes", "y"}
 
 
-def load_attempts(csv_path: Path) -> Dict[Tuple[int, int], PointSummary]:
+def load_attempts(csv_path: Path, rows: List[dict] | None = None) -> Dict[Tuple[int, int], PointSummary]:
     """Group attempt logs by (row_idx, col_idx) and summarise convergence."""
     grouped: Dict[Tuple[int, int], List[dict]] = defaultdict(list)
 
-    with csv_path.open(newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            try:
-                row_idx = int(row["row_idx"])
-                col_idx = int(row["col_idx"])
-            except (KeyError, TypeError, ValueError):
-                # Skip malformed rows rather than aborting the entire file.
-                continue
-            grouped[(row_idx, col_idx)].append(row)
+    source_rows: List[dict]
+    if rows is None:
+        with csv_path.open(newline="") as fh:
+            source_rows = list(csv.DictReader(fh))
+    else:
+        source_rows = rows
+
+    for row in source_rows:
+        try:
+            row_idx = int(row["row_idx"])
+            col_idx = int(row["col_idx"])
+        except (KeyError, TypeError, ValueError):
+            # Skip malformed rows rather than aborting the entire file.
+            continue
+        grouped[(row_idx, col_idx)].append(row)
 
     summaries: Dict[Tuple[int, int], PointSummary] = {}
     for key, attempts in grouped.items():
@@ -168,41 +173,49 @@ def load_table_npz(csv_path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray] 
 
 
 def summarise_low_co_points(
-    co_int: np.ndarray,
-    tg_final: np.ndarray,
-    nH_values: np.ndarray,
-    col_values: np.ndarray,
+    rows: List[dict],
     *,
     threshold: float = CO_INT_THRESHOLD,
     limit: int = LOW_CO_PRINT_LIMIT,
 ) -> str:
     """Generate a summary of cells whose CO intensity falls below ``threshold``."""
-    mask = np.isfinite(co_int) & (co_int < threshold)
-    if not np.any(mask):
+    filtered = []
+    for row in rows:
+        value = row.get("co_int_TB")
+        try:
+            if value is not None and value != "" and float(value) < threshold:
+                filtered.append(row)
+        except (TypeError, ValueError):
+            continue
+
+    if not filtered:
         return f"  No cells with CO intensity < {threshold:g}."
 
-    indices = np.argwhere(mask)
-    lines = [
-        f"  Cells with CO intensity < {threshold:g}: {indices.shape[0]} total"
-    ]
+    lines = [f"  Cells with CO intensity < {threshold:g}: {len(filtered)} total"]
+    for row in filtered[:limit]:
+        try:
+            nH = float(row["nH"])
+            col_den = float(row["colDen"])
+            co_val = float(row["co_int_TB"])
+            tg_val = float(row.get("final_Tg", "nan"))
+        except (KeyError, TypeError, ValueError):
+            continue
 
-    for row_idx, col_idx in indices[:limit]:
         lines.append(
             "    (row={row}, col={col}) nH={nH:.3e} cm^-3 colDen={col_den:.3e} cm^-2 "
             "CO={co:.3e} Tg={tg:.3e} K".format(
-                row=row_idx,
-                col=col_idx,
-                nH=nH_values[row_idx],
-                col_den=col_values[col_idx],
-                co=co_int[row_idx, col_idx],
-                tg=tg_final[row_idx, col_idx],
+                row=row.get("row_idx"),
+                col=row.get("col_idx"),
+                nH=nH,
+                col_den=col_den,
+                co=co_val,
+                tg=tg_val,
             )
         )
 
-    remaining = indices.shape[0] - min(limit, indices.shape[0])
+    remaining = len(filtered) - min(limit, len(filtered))
     if remaining > 0:
         lines.append(f"    … and {remaining} more.")
-
     return "\n".join(lines)
 
 
@@ -214,22 +227,33 @@ def main(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
 
     for csv_path in csv_files:
         print(csv_path.name)
-        summaries = load_attempts(csv_path)
+        with csv_path.open(newline="") as fh:
+            raw_rows = list(csv.DictReader(fh))
+
+        summaries = load_attempts(csv_path, rows=raw_rows)
         print(summarise_points(summaries))
 
-        table_arrays = load_table_npz(csv_path)
-        if table_arrays is not None:
-            co_int, tg_final, nH_values, col_values = table_arrays
-            print(
-                summarise_low_co_points(
-                    co_int,
-                    tg_final,
-                    nH_values,
-                    col_values,
-                )
-            )
+        if raw_rows and "co_int_TB" in raw_rows[0]:
+            print(summarise_low_co_points(rows=raw_rows, threshold=CO_INT_THRESHOLD))
         else:
-            print("  Matching table_*.npz not found or invalid; skipping CO threshold check.")
+            table_arrays = load_table_npz(csv_path)
+            if table_arrays is not None:
+                co_int, tg_final, nH_values, col_values = table_arrays
+                valid_mask = np.isfinite(co_int)
+                fallback_rows: List[dict] = [
+                    {
+                        "row_idx": str(i),
+                        "col_idx": str(j),
+                        "nH": str(nH_values[i]),
+                        "colDen": str(col_values[j]),
+                        "co_int_TB": str(co_int[i, j]),
+                        "final_Tg": str(tg_final[i, j]),
+                    }
+                    for i, j in np.argwhere(valid_mask)
+                ]
+                print(summarise_low_co_points(rows=fallback_rows, threshold=CO_INT_THRESHOLD))
+            else:
+                print("  Matching table_*.npz not found or invalid; skipping CO threshold check.")
         print()
 
 
