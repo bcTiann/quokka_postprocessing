@@ -8,6 +8,7 @@ from typing import Sequence
 import numpy as np
 
 from quokka2s.despotic_tables import (
+    AttemptRecord,
     DespoticTable,
     calculate_single_despotic_point,
 )
@@ -41,6 +42,7 @@ def recompute_low_co_cells(
     tg_guesses: Sequence[float],
     log_failures: bool = True,
     repeat_equilibrium: int = 0,
+    n_jobs: int = 1,
 ) -> DespoticTable:
     co_grid = np.array(table.co_int_tb, copy=True)
     tg_grid = np.array(table.tg_final, copy=True)
@@ -62,8 +64,8 @@ def recompute_low_co_cells(
             f"nH={nH:.6e} cm^-3 colDen={col:.6e} cm^-2 CO_before={current_co:.6e}"
         )
 
-    for row_idx, col_idx in low_indices:
-        row_log: list = []
+    def _evaluate_cell(row_idx: int, col_idx: int):
+        row_log: list[AttemptRecord] = []
         co_val, tg_val = calculate_single_despotic_point(
             nH_val=float(table.nH_values[row_idx]),
             colDen_val=float(table.col_density_values[col_idx]),
@@ -75,6 +77,18 @@ def recompute_low_co_cells(
             col_idx=int(col_idx),
             attempt_log=row_log,
         )
+        return row_idx, col_idx, co_val, tg_val, tuple(row_log)
+
+    if n_jobs == 1:
+        results = [_evaluate_cell(int(r), int(c)) for r, c in low_indices]
+    else:
+        from joblib import Parallel, delayed
+
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(_evaluate_cell)(int(r), int(c)) for r, c in low_indices
+        )
+
+    for row_idx, col_idx, co_val, tg_val, row_log in results:
         co_grid[row_idx, col_idx] = co_val
         tg_grid[row_idx, col_idx] = tg_val
         attempt_records.extend(row_log)
@@ -117,6 +131,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         action="store_true",
         help="Emit warnings when DESPOTIC raises exceptions (default: disabled).",
     )
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=-1,
+        help="Number of parallel workers to use for recomputation (default: 1).",
+    )
     args = parser.parse_args(argv)
 
     output_dir = args.output_npz.parent
@@ -131,6 +151,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         tg_guesses=TG_GUESSES,
         log_failures=args.log_failures,
         repeat_equilibrium=args.repeat,
+        n_jobs=args.n_jobs,
     )
 
     recomputed_plot = output_dir / f"co_int_TB_{tag}.png"
