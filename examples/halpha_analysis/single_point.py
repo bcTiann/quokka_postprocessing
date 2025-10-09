@@ -28,9 +28,9 @@ cell = cloud()
 
 
 cell.Tg = 5
-cell.nH = 3.511e+03
+cell.nH = 10.0
 # cell.nH = 3206.2671377973843
-cell.colDen = 5.722e+22
+cell.colDen = 9.102981779915189e+21
 
 
 co_line_map = []
@@ -65,7 +65,7 @@ cell.comp.computeDerived(cell.nH)
 print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
 
-converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
+converge = cell.setChemEq(network=NL99_GC, evolveTemp="iterateDust")
 print(f"converge = {converge}")
 
 

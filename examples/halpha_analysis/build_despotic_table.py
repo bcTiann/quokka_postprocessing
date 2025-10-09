@@ -21,10 +21,16 @@ from quokka2s.despotic_tables import (
 # OUTPUT_DIR = Path("output_tables_GC")
 # OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# N_H_RANGE = (1e-4, 1e4)
-# COL_DEN_RANGE = (1e18, 1e24)
-N_H_RANGE = (1e1, 1e5)
-COL_DEN_RANGE = (1e20, 1e23)
+
+# Old Range
+N_H_RANGE = (1e-4, 1e4)
+COL_DEN_RANGE = (1e18, 1e24)
+
+# # Success Range
+# N_H_RANGE = (1e1, 1e5)
+# COL_DEN_RANGE = (1e20, 1e23)
+
+
 TG_GUESSES = [5.0, 10.0, 25.0, 50.0]
 PLOT_DPI = 600
 SHOW_PLOTS = False
