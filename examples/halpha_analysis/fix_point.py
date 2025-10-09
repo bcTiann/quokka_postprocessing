@@ -190,13 +190,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "nH",
                     "colDen",
                     "tg_guess",
-                    "Tg_setTempEq",
                     "final_Tg",
                     "attempt_number",
                     "attempt_type",
                     "converged",
                     "repeat_equilibrium",
-                    "emitter_abundance",
+                    "co_int_TB",
                 ]
             )
             for rec in new_table.attempts:
@@ -207,13 +206,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                         rec.nH,
                         rec.colDen,
                         rec.tg_guess,
-                        rec.Tg_setTempEq,
                         rec.final_Tg,
                         rec.attempt_number,
                         rec.attempt_type,
                         rec.converged,
                         rec.repeat_equilibrium,
-                        rec.emitter_abundance,
+                        rec.co_int_TB,
                     ]
                 )
 
