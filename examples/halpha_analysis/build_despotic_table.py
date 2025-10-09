@@ -209,13 +209,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "nH",
                     "colDen",
                     "tg_guess",
-                    "Tg_setTempEq",
                     "final_Tg",
                     "attempt_number",
                     "attempt_type",
                     "converged",
                     "repeat_equilibrium",
-                    "emitter_abundance",
+                    "co_int_TB",
                 ])
                 for record in raw_table.attempts:
                     writer.writerow([
@@ -224,13 +223,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                     record.nH,
                     record.colDen,
                     record.tg_guess,
-                    record.Tg_setTempEq,
                     record.final_Tg,
                     record.attempt_number,
                     record.attempt_type,
                     record.converged,
                     record.repeat_equilibrium,
-                    record.emitter_abundance,
+                    record.co_int_TB,
                 ])
             print(f"{len(raw_table.attempts)} attempts logged to {attempts_path}")
         else:

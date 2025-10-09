@@ -49,13 +49,12 @@ class AttemptRecord:
     nH: float
     colDen: float
     tg_guess: float
-    Tg_setTempEq: float
     final_Tg: float
     attempt_number: int
     attempt_type: str  # "normal_attempt" / "all_guesses_failed"
     converged: bool
     repeat_equilibrium: int
-    emitter_abundance: float
+    co_int_TB: float
 
 
 
@@ -98,7 +97,6 @@ def calculate_single_despotic_point(
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
-    last_tg_set_temp_eq = float("nan")
     for guess in initial_Tg_guesses:
         attempt_number += 1
         last_guess = guess
@@ -130,8 +128,7 @@ def calculate_single_despotic_point(
 
             cell.addEmitter("CO", emitter_abundance)
 
-            # cell.setTempEq()
-            last_tg_set_temp_eq = float(cell.Tg)
+
             converge = cell.setChemEq(network=chem_network, evolveTemp="iterateDust")
 
             # if converge:
@@ -160,13 +157,12 @@ def calculate_single_despotic_point(
                             nH=cell.nH,
                             colDen=cell.colDen,
                             tg_guess=guess,
-                            Tg_setTempEq=last_tg_set_temp_eq,
                             attempt_number=attempt_number,
                             attempt_type="single_attempt",
                             converged=False,
                             final_Tg=float(cell.Tg),
                             repeat_equilibrium=repeat_equilibrium,
-                            emitter_abundance=emitter_abundance,
+                            co_int_TB=cell.lineLum("CO")[0]["intTB"],
                         )
                     )
                 last_final_tg = float(cell.Tg)
@@ -188,13 +184,12 @@ def calculate_single_despotic_point(
                                 nH=cell.nH,
                                 colDen=cell.colDen,
                                 tg_guess=guess,
-                                Tg_setTempEq=last_tg_set_temp_eq,
                                 attempt_number=attempt_number,
                                 attempt_type="co_int_below_threshold",
                                 converged=False,
                                 final_Tg=final_Tg,
                                 repeat_equilibrium=repeat_equilibrium,
-                                emitter_abundance=emitter_abundance,
+                                co_int_TB=cell.lineLum("CO")[0]["intTB"],
                             )
                         )
                     last_final_tg = final_Tg
@@ -208,13 +203,12 @@ def calculate_single_despotic_point(
                                 nH=cell.nH,
                                 colDen=cell.colDen,
                                 tg_guess=guess,
-                                Tg_setTempEq=last_tg_set_temp_eq,
                                 attempt_number=attempt_number,
                                 attempt_type="successful",
                                 converged=True,
                                 final_Tg=float(cell.Tg),
                                 repeat_equilibrium=repeat_equilibrium,
-                                emitter_abundance=emitter_abundance,
+                                co_int_TB=cell.lineLum("CO")[0]["intTB"],
                             )
                         )
                 last_final_tg = float(cell.Tg)
@@ -264,13 +258,12 @@ def calculate_single_despotic_point(
                 nH=nH_val,
                 colDen=colDen_val,
                 tg_guess=last_guess if last_guess is not None else float("nan"),
-                Tg_setTempEq=last_tg_set_temp_eq,
                 attempt_number=attempt_number,
                 attempt_type="all_guesses_failed",
                 converged=False,
                 final_Tg=last_final_tg,
                 repeat_equilibrium=repeat_equilibrium,
-                emitter_abundance=emitter_abundance,
+                co_int_TB=cell.lineLum("CO")[0]["intTB"],
                         )
 
         )
