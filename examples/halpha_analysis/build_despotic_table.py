@@ -106,7 +106,8 @@ def build_table_at_resolution(points: int,
                               seed_table: DespoticTable | None, 
                               repeat_equilibrium: int = 0,
                               chem_network=NL99,
-                              round_digits: int | None = None) -> DespoticTable:
+                              round_digits: int | None = None,
+                              n_jobs: int = -1,) -> DespoticTable:
     suffix = " (seeded by previous refinement)" if seed_table else ""
     print(f"Building DESPOTIC table at resolution {points}x{points}{suffix}")
 
@@ -179,7 +180,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     repeat_equilibrium = args.repeat
     fill_requested = args.fill
     round_digits = args.round_digits
-
+    n_jobs = args.n_jobs
     previous_refined: DespoticTable | None = None
 
 
@@ -196,6 +197,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             repeat_equilibrium=repeat_equilibrium,
             chem_network=chem_network,
             round_digits=round_digits,   
+            n_jobs=n_jobs,
         )
 
         # Save Table
