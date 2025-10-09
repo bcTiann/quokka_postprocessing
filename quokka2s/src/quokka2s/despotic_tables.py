@@ -106,7 +106,7 @@ def calculate_single_despotic_point(
             cell = cloud()
             cell.nH = nH_val
             cell.colDen = colDen_val
-            cell.Tg = guess
+            cell.Tg = 5.0
 
             cell.sigmaNT = 2.0e5
             cell.comp.xoH2 = 0.1
