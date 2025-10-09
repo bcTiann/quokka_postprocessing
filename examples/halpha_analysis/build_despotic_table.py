@@ -36,9 +36,9 @@ PLOT_DPI = 600
 SHOW_PLOTS = False
 
 NETWORK_MAP = {
-    "NL99": NL99,
-    "NL99_GC": NL99_GC,
-    "GOW": GOW,
+    "nl99": NL99,
+    "nl99_gc": NL99_GC,
+    "gow": GOW,
 }
 def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -56,6 +56,12 @@ def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
                         help="run fill_missing_values after table created")
     parser.add_argument("--round", dest="round_digits", type=int, default=None,
                         help="round LogGrid values to this many decimal places (omit for full precision)")
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=-1,
+        help="Number of parallel workers (default: -1 uses all available cores).",
+    )
     return parser.parse_args(argv[1:])
 
 
@@ -114,7 +120,7 @@ def build_table_at_resolution(points: int,
             TG_GUESSES,
             chem_network=chem_network,
             show_progress=True,
-            n_jobs=24,
+            n_jobs=n_jobs,
             repeat_equilibrium=repeat_equilibrium,
             log_failures=True
         )
