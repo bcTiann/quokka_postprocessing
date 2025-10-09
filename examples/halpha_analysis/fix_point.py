@@ -15,7 +15,7 @@ from quokka2s.despotic_tables import (
 from despotic.chemistry import NL99, NL99_GC, GOW
 from build_despotic_table import plot_table, TG_GUESSES
 
-
+TG_GUESSES = [1.05, 7.05 15.05, 50.05, 1.05e+3, 1.05e+4, 1.05e+5]
 NETWORK_MAP = {
     "nl99": NL99,
     "nl99_gc": NL99_GC,
