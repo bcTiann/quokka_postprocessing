@@ -9,9 +9,9 @@ from typing import Dict, List, Tuple
 import numpy as np
 
 
-ATTEMPT_FILE_PATTERN = "attempts_*.csv"
-DEFAULT_OUTPUT_DIR = Path("output_tables")
-CO_INT_THRESHOLD = 1.0e-6
+ATTEMPT_FILE_PATTERN = "*.csv"
+DEFAULT_OUTPUT_DIR = Path("output_tables_NL99_large")
+CO_INT_THRESHOLD = 1.0e-7
 LOW_CO_PRINT_LIMIT = 10
 
 
