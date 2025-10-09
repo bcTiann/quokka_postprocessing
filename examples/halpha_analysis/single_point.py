@@ -27,8 +27,8 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 5
-cell.nH = 10.0
+cell.Tg = 5.312
+cell.nH = 1.0e+1
 # cell.nH = 3206.2671377973843
 cell.colDen = 9.102981779915189e+21
 
@@ -65,7 +65,7 @@ cell.comp.computeDerived(cell.nH)
 print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
 
-converge = cell.setChemEq(network=NL99_GC, evolveTemp="iterateDust")
+converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
 print(f"converge = {converge}")
 
 

@@ -22,16 +22,20 @@ from quokka2s.despotic_tables import (
 # OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# Old Range
-N_H_RANGE = (1e-4, 1e4)
-COL_DEN_RANGE = (1e18, 1e24)
+# # Old Range
+# N_H_RANGE = (1e-4, 1e4)
+# COL_DEN_RANGE = (1e18, 1e24)
 
 # # Success Range
 # N_H_RANGE = (1e1, 1e5)
 # COL_DEN_RANGE = (1e20, 1e23)
 
+N_H_RANGE = (1e1, 1e5)
+COL_DEN_RANGE = (1e18, 1e24)
 
-TG_GUESSES = [5.0, 10.0, 25.0, 50.0]
+
+
+TG_GUESSES = [5.12, 10.234, 25.245, 50.42, 100.414, 1000.321]
 PLOT_DPI = 600
 SHOW_PLOTS = False
 
@@ -139,12 +143,14 @@ def build_table_at_resolution(points: int,
         chem_network=chem_network,
         interpolator=interpolator,
         show_progress=True,
-        repeat_equilibrium=repeat_equilibrium
+        repeat_equilibrium=repeat_equilibrium,
+        n_jobs=n_jobs,
     )
 
 
 def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
-                           round_digits: int | None = None) -> DespoticTable:
+                           round_digits: int | None = None,
+                           n_jobs: int = -1) -> DespoticTable:
     points = table.co_int_tb.shape[0]
     print(f"Refining temperature guesses on existing {points}x{points} grid")
 
@@ -166,7 +172,8 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
         TG_GUESSES,
         interpolator=interpolator,
         show_progress=True,
-        repeat_equilibrium=repeat_equilibrium
+        repeat_equilibrium=repeat_equilibrium,
+        n_jobs=n_jobs,
     )
 
 
@@ -235,6 +242,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "converged",
                     "repeat_equilibrium",
                     "co_int_TB",
+                    "error_message",
                 ])
                 for record in raw_table.attempts:
                     writer.writerow([
@@ -249,6 +257,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     record.converged,
                     record.repeat_equilibrium,
                     record.co_int_TB,
+                    record.error_message or "",
                 ])
             print(f"{len(raw_table.attempts)} attempts logged to {attempts_path}")
         else:

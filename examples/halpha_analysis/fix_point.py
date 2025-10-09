@@ -53,7 +53,7 @@ def recompute_low_co_cells(
     co_grid = np.array(table.co_int_tb, copy=True)
     tg_grid = np.array(table.tg_final, copy=True)
 
-    mask = np.isnan(co_grid) | (co_grid < threshold)
+    mask = np.isnan(co_grid) | (co_grid < threshold) 
     if not np.any(mask):
         print(f"No cells require recomputation (threshold={threshold}).")
         return table
@@ -106,6 +106,9 @@ def recompute_low_co_cells(
         col_density_values=table.col_density_values,
         attempts=table.attempts + tuple(attempt_records),
     )
+
+
+
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -202,6 +205,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "converged",
                     "repeat_equilibrium",
                     "co_int_TB",
+                    "error_message",
                 ]
             )
             for rec in new_table.attempts:
@@ -218,6 +222,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                         rec.converged,
                         rec.repeat_equilibrium,
                         rec.co_int_TB,
+                        rec.error_message or "",
                     ]
                 )
 

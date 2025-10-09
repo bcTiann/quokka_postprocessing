@@ -51,10 +51,11 @@ class AttemptRecord:
     tg_guess: float
     final_Tg: float
     attempt_number: int
-    attempt_type: str  # "normal_attempt" / "all_guesses_failed"
+    attempt_type: str  # "successful" / "single_attempt" / "co_int_below_threshold" / "exception" / "all_guesses_failed"
     converged: bool
     repeat_equilibrium: int
     co_int_TB: float
+    error_message: str | None = None
 
 
 
@@ -74,6 +75,7 @@ class DespoticTable:
 
 
 DEFAULT_EMITTER_ABUNDANCE = 8.0e-9
+CO_INT_THRESHOLD = 1.0e-8
 
 
 
@@ -97,6 +99,7 @@ def calculate_single_despotic_point(
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
+    last_co_int = float("nan")
     for guess in initial_Tg_guesses:
         attempt_number += 1
         last_guess = guess
@@ -128,27 +131,12 @@ def calculate_single_despotic_point(
 
             cell.addEmitter("CO", emitter_abundance)
 
-
             converge = cell.setChemEq(network=chem_network, evolveTemp="iterateDust")
 
-            # if converge:
-            #     rates = cell.dEdt(sumOnly=True)
-            #     print(f"dEdtGas={rates['dEdtGas']:.3e}, dEdtDust={rates['dEdtDust']:.3e}")
-            print("="*40)
-            print(f"({row_idx}, {col_idx}) converge: {converge}")
-            print("="*40)
-
-
             if not converge:
-                print("="*40)
-                print(f"({row_idx}, {col_idx}) converge failed :")
-                print(f"Tg = {cell.Tg}")
-                print(f"nH = {cell.nH}")
-                print(f"colDen = {cell.colDen}")
-                print("="*40)
-                
-                    
-
+                final_tg = float(cell.Tg)
+                last_final_tg = final_tg
+                last_co_int = float("nan")
                 if attempt_log is not None:
                     attempt_log.append(
                         AttemptRecord(
@@ -157,92 +145,79 @@ def calculate_single_despotic_point(
                             nH=cell.nH,
                             colDen=cell.colDen,
                             tg_guess=guess,
+                            final_Tg=final_tg,
                             attempt_number=attempt_number,
                             attempt_type="single_attempt",
                             converged=False,
-                            final_Tg=float(cell.Tg),
                             repeat_equilibrium=repeat_equilibrium,
-                            co_int_TB=cell.lineLum("CO")[0]["intTB"],
+                            co_int_TB=float("nan"),
                         )
                     )
-                last_final_tg = float(cell.Tg)
                 continue
 
-            else:
+            lines = cell.lineLum("CO")
+            co_int_TB = lines[0]["intTB"]
+            final_Tg = float(cell.Tg)
+            last_final_tg = final_Tg
+            last_co_int = co_int_TB
 
-                lines = cell.lineLum("CO")
-                co_int_TB = lines[0]["intTB"]
-                final_Tg = float(cell.Tg)
+            # if (not np.isfinite(co_int_TB)) or (co_int_TB < CO_INT_THRESHOLD):
+            #     if attempt_log is not None:
+            #         attempt_log.append(
+            #             AttemptRecord(
+            #                 row_idx=row_idx,
+            #                 col_idx=col_idx,
+            #                 nH=cell.nH,
+            #                 colDen=cell.colDen,
+            #                 tg_guess=guess,
+            #                 final_Tg=final_Tg,
+            #                 attempt_number=attempt_number,
+            #                 attempt_type="co_int_below_threshold",
+            #                 converged=False,
+            #                 repeat_equilibrium=repeat_equilibrium,
+            #                 co_int_TB=co_int_TB,
+            #             )
+            #         )
+            #     continue
 
+            if attempt_log is not None:
+                attempt_log.append(
+                    AttemptRecord(
+                        row_idx=row_idx,
+                        col_idx=col_idx,
+                        nH=cell.nH,
+                        colDen=cell.colDen,
+                        tg_guess=guess,
+                        final_Tg=final_Tg,
+                        attempt_number=attempt_number,
+                        attempt_type="successful",
+                        converged=True,
+                        repeat_equilibrium=repeat_equilibrium,
+                        co_int_TB=co_int_TB,
+                    )
+                )
+            return co_int_TB, final_Tg
 
-                if co_int_TB < 1.0e-8 or not np.isfinite(co_int_TB):
-                    if attempt_log is not None:
-                        attempt_log.append(
-                            AttemptRecord(
-                                row_idx=row_idx,
-                                col_idx=col_idx,
-                                nH=cell.nH,
-                                colDen=cell.colDen,
-                                tg_guess=guess,
-                                attempt_number=attempt_number,
-                                attempt_type="co_int_below_threshold",
-                                converged=False,
-                                final_Tg=final_Tg,
-                                repeat_equilibrium=repeat_equilibrium,
-                                co_int_TB=cell.lineLum("CO")[0]["intTB"],
-                            )
-                        )
-                    last_final_tg = final_Tg
-                    continue  # try next guess T
-
-                if attempt_log is not None:
-                    attempt_log.append(
-                            AttemptRecord(
-                                row_idx=row_idx,
-                                col_idx=col_idx,
-                                nH=cell.nH,
-                                colDen=cell.colDen,
-                                tg_guess=guess,
-                                attempt_number=attempt_number,
-                                attempt_type="successful",
-                                converged=True,
-                                final_Tg=float(cell.Tg),
-                                repeat_equilibrium=repeat_equilibrium,
-                                co_int_TB=cell.lineLum("CO")[0]["intTB"],
-                            )
-                        )
-                last_final_tg = float(cell.Tg)
-                # if repeat_equilibrium > 0:
-                #     for _ in range(repeat_equilibrium):
-                #         cell.setChemEq(network=NL99, evolveTemp="iterate")
-                lines = cell.lineLum("CO")
-                co_int_TB = lines[0]["intTB"]
-                final_Tg = float(cell.Tg)
-                    
-                return co_int_TB, final_Tg
-            # if (not np.isfinite(co_int_TB)) or (co_int_TB < 0.0) or (not np.isfinite(final_Tg)) or (final_Tg < 0.0):
-            #     row_str = "?" if row_idx is None else row_idx
-            #     col_str = "?" if col_idx is None else col_idx
-            #     index_info = f"(i={row_str}, j={col_str})"
-
-            #     diagnostics_msg = (
-            #         "DESPOTIC returned an invalid state:\n"
-            #         f"  intTB = {co_int_TB:.3e} K km/s\n"
-            #         f"  Tg    = {final_Tg:.3e} K\n"
-            #         f"  grid  = {index_info}\n"
-            #         f"  nH    = {nH_val:.3e} cm^-3\n"
-            #         f"  colDen= {colDen_val:.3e} cm^-2\n"
-            #         f"  Tg guess = {guess:.3e} K\n"
-            #         f"  repeat_equilibrium = {repeat_equilibrium}\n"
-            #         f"  emitter_abundance  = {emitter_abundance:.3e}"
-            #     )
-
-            #     warnings.warn(diagnostics_msg, RuntimeWarning)
-            #     return float("nan"), float("nan")
-
-                
-        
         except Exception as exc:  # pragma: no cover - DESPOTIC exceptions vary
+            last_final_tg = float("nan")
+            last_co_int = float("nan")
+            if attempt_log is not None:
+                attempt_log.append(
+                    AttemptRecord(
+                        row_idx=row_idx,
+                        col_idx=col_idx,
+                        nH=nH_val,
+                        colDen=colDen_val,
+                        tg_guess=guess,
+                        final_Tg=float("nan"),
+                        attempt_number=attempt_number,
+                        attempt_type="exception",
+                        converged=False,
+                        repeat_equilibrium=repeat_equilibrium,
+                        co_int_TB=float("nan"),
+                        error_message=str(exc),
+                    )
+                )
             if log_failures:
                 warnings.warn(
                     f"DESPOTIC failed for Tg guess {guess:.2f} K (nH={nH_val}, colDen={colDen_val}): {exc}",
@@ -258,14 +233,13 @@ def calculate_single_despotic_point(
                 nH=nH_val,
                 colDen=colDen_val,
                 tg_guess=last_guess if last_guess is not None else float("nan"),
+                final_Tg=last_final_tg,
                 attempt_number=attempt_number,
                 attempt_type="all_guesses_failed",
                 converged=False,
-                final_Tg=last_final_tg,
                 repeat_equilibrium=repeat_equilibrium,
-                co_int_TB=cell.lineLum("CO")[0]["intTB"],
-                        )
-
+                co_int_TB=last_co_int,
+            )
         )
     return float("nan"), float("nan")
 
