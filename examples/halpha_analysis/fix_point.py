@@ -12,9 +12,8 @@ from quokka2s.despotic_tables import (
     calculate_single_despotic_point,
 )
 from despotic.chemistry import NL99, NL99_GC, GOW
-from build_despotic_table import plot_table
+from build_despotic_table import plot_table, TG_GUESSES
 
-TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
 
 NETWORK_MAP = {
     "nl99": NL99,

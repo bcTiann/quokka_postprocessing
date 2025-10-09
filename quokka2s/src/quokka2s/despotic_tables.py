@@ -89,7 +89,7 @@ def calculate_single_despotic_point(
     chem_network=NL99, 
     row_idx: int | None = None, 
     col_idx: int | None = None,
-    attempt_log: list[AttemptRecord] | None = None
+    attempt_log: list[AttemptRecord] | None = None,
 ) -> Tuple[float, float]:
     """Run DESPOTIC for one (nH, column density) pair.
 
@@ -106,7 +106,7 @@ def calculate_single_despotic_point(
             cell = cloud()
             cell.nH = nH_val
             cell.colDen = colDen_val
-            cell.Tg = 5.0
+            cell.Tg = guess
 
             cell.sigmaNT = 2.0e5
             cell.comp.xoH2 = 0.1
@@ -149,6 +149,8 @@ def calculate_single_despotic_point(
                 print(f"nH = {cell.nH}")
                 print(f"colDen = {cell.colDen}")
                 print("="*40)
+                
+                    
 
                 if attempt_log is not None:
                     attempt_log.append(
@@ -171,6 +173,30 @@ def calculate_single_despotic_point(
                 continue
 
             else:
+
+
+
+                if co_int_TB < 1.0e-8 or not np.isfinite(co_int_TB):
+                    if attempt_log is not None:
+                        attempt_log.append(
+                            AttemptRecord(
+                                row_idx=row_idx,
+                                col_idx=col_idx,
+                                nH=cell.nH,
+                                colDen=cell.colDen,
+                                tg_guess=guess,
+                                Tg_setTempEq=last_tg_set_temp_eq,
+                                attempt_number=attempt_number,
+                                attempt_type="co_int_below_threshold",
+                                converged=False,
+                                final_Tg=final_Tg,
+                                repeat_equilibrium=repeat_equilibrium,
+                                emitter_abundance=emitter_abundance,
+                            )
+                        )
+                    last_final_tg = final_Tg
+                    continue  # try next guess T
+
                 if attempt_log is not None:
                     attempt_log.append(
                             AttemptRecord(
@@ -195,7 +221,10 @@ def calculate_single_despotic_point(
                 lines = cell.lineLum("CO")
                 co_int_TB = lines[0]["intTB"]
                 final_Tg = float(cell.Tg)
-                
+
+
+
+                    
                 return co_int_TB, final_Tg
             # if (not np.isfinite(co_int_TB)) or (co_int_TB < 0.0) or (not np.isfinite(final_Tg)) or (final_Tg < 0.0):
             #     row_str = "?" if row_idx is None else row_idx

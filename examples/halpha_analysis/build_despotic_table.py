@@ -25,7 +25,7 @@ from quokka2s.despotic_tables import (
 # COL_DEN_RANGE = (1e18, 1e24)
 N_H_RANGE = (1e1, 1e5)
 COL_DEN_RANGE = (1e20, 1e23)
-TG_GUESSES = np.logspace(np.log10(10.0), np.log10(10000.0), 20).tolist()
+TG_GUESSES = [5.0, 10.0, 25.0, 50.0]
 PLOT_DPI = 600
 SHOW_PLOTS = False
 
