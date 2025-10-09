@@ -26,6 +26,7 @@ class LogGrid:
     min_value: float
     max_value: float
     num_points: int
+    round_digits: int | None = None
 
     def __post_init__(self) -> None:
         if self.min_value <= 0 or self.max_value <= 0:
@@ -35,12 +36,11 @@ class LogGrid:
         if self.num_points < 2:
             raise ValueError("num_points must be >= 2")
 
-    # def sample(self) -> np.ndarray:
-    #     return np.logspace(np.log10(self.min_value), np.log10(self.max_value), self.num_points)
-
     def sample(self) -> np.ndarray:
         values = np.logspace(np.log10(self.min_value), np.log10(self.max_value), self.num_points)
-        return np.round(values, 2)
+        if self.round_digits is not None:
+            values = np.round(values, self.round_digits)
+        return values
 
 @dataclass(frozen=True)
 class AttemptRecord:

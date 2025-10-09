@@ -48,6 +48,8 @@ def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
                         help="repeat_equilibrium (defualt=0)")
     parser.add_argument("--fill", action="store_true",
                         help="run fill_missing_values after table created")
+    parser.add_argument("--round", dest="round_digits", type=int, default=None,
+                        help="round LogGrid values to this many decimal places (omit for full precision)")
     return parser.parse_args(argv[1:])
 
 
@@ -91,12 +93,13 @@ def save_table(prefix: str, table: DespoticTable) -> None:
 def build_table_at_resolution(points: int, 
                               seed_table: DespoticTable | None, 
                               repeat_equilibrium: int = 0,
-                              chem_network=NL99) -> DespoticTable:
+                              chem_network=NL99,
+                              round_digits: int | None = None) -> DespoticTable:
     suffix = " (seeded by previous refinement)" if seed_table else ""
     print(f"Building DESPOTIC table at resolution {points}x{points}{suffix}")
 
-    nH_grid = LogGrid(*N_H_RANGE, points)
-    col_grid = LogGrid(*COL_DEN_RANGE, points)
+    nH_grid = LogGrid(*N_H_RANGE, points, round_digits=round_digits)
+    col_grid = LogGrid(*COL_DEN_RANGE, points, round_digits=round_digits)
 
     if seed_table is None:
         return build_table(
@@ -127,12 +130,13 @@ def build_table_at_resolution(points: int,
     )
 
 
-def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0) -> DespoticTable:
+def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
+                           round_digits: int | None = None) -> DespoticTable:
     points = table.co_int_tb.shape[0]
     print(f"Refining temperature guesses on existing {points}x{points} grid")
 
-    nH_grid = LogGrid(table.nH_values[0], table.nH_values[-1], points)
-    col_grid = LogGrid(table.col_density_values[0], table.col_density_values[-1], points)
+    nH_grid = LogGrid(table.nH_values[0], table.nH_values[-1], points, round_digits=round_digits)
+    col_grid = LogGrid(table.col_density_values[0], table.col_density_values[-1], points, round_digits=round_digits)
 
     interpolator = make_temperature_interpolator(
         table.nH_values,
@@ -162,6 +166,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     chem_network = NETWORK_MAP[args.network]
     repeat_equilibrium = args.repeat
     fill_requested = args.fill
+    round_digits = args.round_digits
 
     previous_refined: DespoticTable | None = None
 
@@ -177,7 +182,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             points,
             previous_refined,
             repeat_equilibrium=repeat_equilibrium,
-            chem_network=chem_network,   
+            chem_network=chem_network,
+            round_digits=round_digits,   
         )
 
         # Save Table

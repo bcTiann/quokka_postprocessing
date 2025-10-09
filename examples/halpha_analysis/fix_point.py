@@ -65,8 +65,8 @@ def recompute_low_co_cells(
     for row_idx, col_idx in low_indices:
         row_log: list = []
         co_val, tg_val = calculate_single_despotic_point(
-            nH_val=np.round(float(table.nH_values[row_idx]), 2),
-            colDen_val=np.round(float(table.col_density_values[col_idx]), 2),
+            nH_val=float(table.nH_values[row_idx]),
+            colDen_val=float(table.col_density_values[col_idx]),
             initial_Tg_guesses=tg_guesses,
             log_failures=log_failures,
             repeat_equilibrium=repeat_equilibrium,
