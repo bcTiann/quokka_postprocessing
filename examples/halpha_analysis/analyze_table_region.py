@@ -4,9 +4,12 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Tuple
+from typing import Iterable, Tuple
 
 import numpy as np
+
+DEFAULT_OUTPUT_DIR = Path("output_tables")
+
 
 @dataclass
 class RegionStats:
@@ -16,11 +19,17 @@ class RegionStats:
     max_value: float
     mean_value: float
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Inspect a DESPOTIC table (npz) over a selected coordinate region."
+        description="Inspect one or more DESPOTIC tables (npz) over a selected coordinate region.",
     )
-    parser.add_argument("table_npz", type=Path, help="Path to the table_*.npz file.")
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        type=Path,
+        help="table_*.npz files or directories containing them (default: output_tables)",
+    )
     parser.add_argument(
         "--nH-range",
         nargs=2,
@@ -57,14 +66,16 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
+
 def select_indices(values: np.ndarray, span: Tuple[int, int] | None, value_range: Tuple[float, float] | None) -> np.ndarray:
     if span:
         start, end = span
-        return np.arange(start, min(end, values.size))
+        return np.arange(max(start, 0), min(end, values.size))
     if value_range:
         low, high = value_range
         return np.where((values >= low) & (values <= high))[0]
     return np.arange(values.size)
+
 
 def summarise(array: np.ndarray) -> RegionStats:
     finite = np.isfinite(array)
@@ -84,11 +95,23 @@ def summarise(array: np.ndarray) -> RegionStats:
         mean_value=float(np.nanmean(array)),
     )
 
-def main() -> None:
-    args = parse_args()
-    table_path = args.table_npz
+
+def iter_tables(paths: Iterable[Path]) -> list[Path]:
+    tables: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            tables.extend(sorted(path.glob("table_*.npz")))
+        elif path.suffix == ".npz":
+            tables.append(path)
+        else:
+            print(f"Skipping unsupported target: {path}")
+    return tables
+
+
+def analyse_table(table_path: Path, args: argparse.Namespace) -> None:
     if not table_path.exists():
-        raise SystemExit(f"File not found: {table_path}")
+        print(f"File not found: {table_path}")
+        return
 
     with np.load(table_path) as data:
         co_int = data["co_int_tb"]
@@ -107,36 +130,54 @@ def main() -> None:
         value_range=tuple(args.col_range) if args.col_range else None,
     )
 
+    if rows.size == 0 or cols.size == 0:
+        print(f"{table_path.name}: no rows/cols match the specified criteria.")
+        return
+
     co_region = co_int[np.ix_(rows, cols)]
     tg_region = tg_final[np.ix_(rows, cols)]
 
     co_stats = summarise(co_region)
     tg_stats = summarise(tg_region)
 
-    print(f"Region rows: {rows[0]}–{rows[-1]} (count: {rows.size})")
-    print(f"Region cols: {cols[0]}–{cols[-1]} (count: {cols.size})")
-    print("CO intensity stats:")
-    print(f"  count={co_stats.count}  NaN={co_stats.nan_count}")
-    print(f"  min={co_stats.min_value:.3e}  max={co_stats.max_value:.3e}  mean={co_stats.mean_value:.3e}")
-    print("Final Tg stats:")
-    print(f"  count={tg_stats.count}  NaN={tg_stats.nan_count}")
-    print(f"  min={tg_stats.min_value:.3e}  max={tg_stats.max_value:.3e}  mean={tg_stats.mean_value:.3e}")
+    print(f"{table_path.name}")
+    print(f"  Region rows: {rows[0]}–{rows[-1]} (count: {rows.size})")
+    print(f"  Region cols: {cols[0]}–{cols[-1]} (count: {cols.size})")
+    print("  CO intensity stats:")
+    print(f"    count={co_stats.count}  NaN={co_stats.nan_count}")
+    print(f"    min={co_stats.min_value:.3e}  max={co_stats.max_value:.3e}  mean={co_stats.mean_value:.3e}")
+    print("  Final Tg stats:")
+    print(f"    count={tg_stats.count}  NaN={tg_stats.nan_count}")
+    print(f"    min={tg_stats.min_value:.3e}  max={tg_stats.max_value:.3e}  mean={tg_stats.mean_value:.3e}")
 
     mask = np.isfinite(co_region) & (co_region < args.threshold)
     num_low = np.count_nonzero(mask)
     if num_low:
-        print(f"Cells with CO intensity < {args.threshold:g}: {num_low}")
+        print(f"  Cells with CO intensity < {args.threshold:g}: {num_low}")
         for (i, j) in zip(*np.where(mask)):
             row_idx = rows[i]
             col_idx = cols[j]
             print(
-                f"  (row={row_idx}, col={col_idx}) "
+                f"    (row={row_idx}, col={col_idx}) "
                 f"nH={nH_values[row_idx]:.3e} cm^-3  "
                 f"colDen={col_values[col_idx]:.3e} cm^-2  "
                 f"CO={co_region[i, j]:.3e}  Tg={tg_region[i, j]:.3e} K"
             )
     else:
-        print(f"No cells below threshold {args.threshold:g} in this region.")
+        print(f"  No cells below threshold {args.threshold:g} in this region.")
+
+
+def main() -> None:
+    args = parse_args()
+    targets = args.targets if args.targets else [DEFAULT_OUTPUT_DIR]
+    table_paths = iter_tables(targets)
+    if not table_paths:
+        raise SystemExit("No table_*.npz files found.")
+
+    for table_path in table_paths:
+        analyse_table(table_path, args)
+        print()
+
 
 if __name__ == "__main__":
     main()
