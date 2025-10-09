@@ -174,6 +174,9 @@ def calculate_single_despotic_point(
 
             else:
 
+                lines = cell.lineLum("CO")
+                co_int_TB = lines[0]["intTB"]
+                final_Tg = float(cell.Tg)
 
 
                 if co_int_TB < 1.0e-8 or not np.isfinite(co_int_TB):
@@ -221,9 +224,6 @@ def calculate_single_despotic_point(
                 lines = cell.lineLum("CO")
                 co_int_TB = lines[0]["intTB"]
                 final_Tg = float(cell.Tg)
-
-
-
                     
                 return co_int_TB, final_Tg
             # if (not np.isfinite(co_int_TB)) or (co_int_TB < 0.0) or (not np.isfinite(final_Tg)) or (final_Tg < 0.0):
