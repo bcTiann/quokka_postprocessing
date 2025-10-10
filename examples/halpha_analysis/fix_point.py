@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, Tuple
 
 import numpy as np
 
@@ -40,6 +40,16 @@ def load_table(npz_path: Path) -> DespoticTable:
         )
 
 
+def select_indices(values: np.ndarray, span: Tuple[int, int] | None, value_range: Tuple[float, float] | None) -> np.ndarray:
+    if span is not None:
+        start, end = span
+        return np.arange(max(start, 0), min(end, values.size))
+    if value_range is not None:
+        low, high = value_range
+        return np.where((values >= low) & (values <= high))[0]
+    return np.arange(values.size)
+
+
 def recompute_low_co_cells(
     table: DespoticTable,
     *,
@@ -49,11 +59,32 @@ def recompute_low_co_cells(
     log_failures: bool = True,
     repeat_equilibrium: int = 0,
     n_jobs: int = 1,
+    nH_values: np.ndarray,
+    col_values: np.ndarray,
+    row_span: Tuple[int, int] | None = None,
+    col_span: Tuple[int, int] | None = None,
+    nH_range: Tuple[float, float] | None = None,
+    col_range: Tuple[float, float] | None = None,
 ) -> DespoticTable:
     co_grid = np.array(table.co_int_tb, copy=True)
     tg_grid = np.array(table.tg_final, copy=True)
 
-    mask = np.isnan(co_grid) | (co_grid < threshold) 
+    rows = select_indices(nH_values, row_span, nH_range)
+    cols = select_indices(col_values, col_span, col_range)
+
+    if rows.size == 0 or cols.size == 0:
+        print("No cells match the specified region; skipping recomputation.")
+        return table
+
+    region_mask = np.zeros_like(co_grid, dtype=bool)
+    region_mask[np.ix_(rows, cols)] = True
+
+    print(
+        f"Selected region rows: {rows[0]}–{rows[-1]} (count: {rows.size}), "
+        f"cols: {cols[0]}–{cols[-1]} (count: {cols.size})"
+    )
+
+    mask = (np.isnan(co_grid) | (co_grid < threshold)) & region_mask
     if not np.any(mask):
         print(f"No cells require recomputation (threshold={threshold}).")
         return table
@@ -62,8 +93,8 @@ def recompute_low_co_cells(
     low_indices = np.argwhere(mask)
     print(f"Recomputing {len(low_indices)} cells with CO intensity < {threshold:.3e}")
     for row_idx, col_idx in low_indices:
-        nH = float(table.nH_values[row_idx])
-        col = float(table.col_density_values[col_idx])
+        nH = float(nH_values[row_idx])
+        col = float(col_values[col_idx])
         current_co = float(co_grid[row_idx, col_idx])
         print(
             f"  (row={row_idx}, col={col_idx}) "
@@ -73,8 +104,8 @@ def recompute_low_co_cells(
     def _evaluate_cell(row_idx: int, col_idx: int):
         row_log: list[AttemptRecord] = []
         co_val, tg_val = calculate_single_despotic_point(
-            nH_val=float(table.nH_values[row_idx]),
-            colDen_val=float(table.col_density_values[col_idx]),
+            nH_val=float(nH_values[row_idx]),
+            colDen_val=float(col_values[col_idx]),
             initial_Tg_guesses=tg_guesses,
             log_failures=log_failures,
             repeat_equilibrium=repeat_equilibrium,
@@ -143,8 +174,36 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--n-jobs",
         type=int,
-        default=-1,
+        default=1,
         help="Number of parallel workers to use for recomputation (default: 1).",
+    )
+    parser.add_argument(
+        "--nH-range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        help="Only consider rows whose nH lies within [MIN, MAX].",
+    )
+    parser.add_argument(
+        "--col-range",
+        nargs=2,
+        type=float,
+        metavar=("MIN", "MAX"),
+        help="Only consider columns whose colDen lies within [MIN, MAX].",
+    )
+    parser.add_argument(
+        "--row-span",
+        nargs=2,
+        type=int,
+        metavar=("START", "END"),
+        help="Only consider row indices in [START, END) (0-based).",
+    )
+    parser.add_argument(
+        "--col-span",
+        nargs=2,
+        type=int,
+        metavar=("START", "END"),
+        help="Only consider column indices in [START, END) (0-based).",
     )
     args = parser.parse_args(argv)
 
@@ -161,6 +220,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         log_failures=args.log_failures,
         repeat_equilibrium=args.repeat,
         n_jobs=args.n_jobs,
+        nH_values=table.nH_values,
+        col_values=table.col_density_values,
+        row_span=tuple(args.row_span) if args.row_span else None,
+        col_span=tuple(args.col_span) if args.col_span else None,
+        nH_range=tuple(args.nH_range) if args.nH_range else None,
+        col_range=tuple(args.col_range) if args.col_range else None,
     )
 
     recomputed_plot = output_dir / f"co_int_TB_{tag}.png"
