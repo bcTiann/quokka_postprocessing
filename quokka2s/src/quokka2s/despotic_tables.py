@@ -8,6 +8,7 @@ import warnings
 import contextlib
 import io
 import logging
+import math
 
 
 import numpy as np
@@ -117,10 +118,12 @@ def calculate_single_despotic_point(
     log_failures: bool = False,
     emitter_abundance: float = DEFAULT_EMITTER_ABUNDANCE,
     repeat_equilibrium: int = 0,
-    chem_network=NL99, 
-    row_idx: int | None = None, 
+    chem_network=NL99,
+    row_idx: int | None = None,
     col_idx: int | None = None,
     attempt_log: list[AttemptRecord] | None = None,
+    reuse_failed_tg: bool = False,
+    reuse_max_insertions: int = 3,
 ) -> Tuple[float, float, float, float, float, float, float, float]:
     """Run DESPOTIC for one (nH, column density) pair.
 
@@ -140,7 +143,33 @@ def calculate_single_despotic_point(
     last_tau_dust = float("nan")
     last_tex = float("nan")
     last_freq = float("nan")
-    for guess in initial_Tg_guesses:
+
+    pending_guesses: list[float] = [float(g) for g in initial_Tg_guesses]
+    seen_guesses: list[float] = []
+    reuse_insertions = 0
+
+    def _should_skip(value: float) -> bool:
+        return any(math.isclose(value, prev, rel_tol=1e-3, abs_tol=1e-2) for prev in seen_guesses)
+
+    def _enqueue_retry(value: float) -> None:
+        nonlocal reuse_insertions
+        if not reuse_failed_tg:
+            return
+        if reuse_insertions >= reuse_max_insertions:
+            return
+        if not np.isfinite(value) or value <= 0:
+            return
+        value = float(value)
+        if _should_skip(value):
+            return
+        pending_guesses.insert(0, value)
+        reuse_insertions += 1
+
+    while pending_guesses:
+        guess = pending_guesses.pop(0)
+        if reuse_failed_tg and _should_skip(guess):
+            continue
+        seen_guesses.append(guess)
         attempt_number += 1
         last_guess = guess
         try:
@@ -209,6 +238,7 @@ def calculate_single_despotic_point(
                             frequency=float("nan"),
                         )
                     )
+                _enqueue_retry(final_tg)
                 continue
 
             stdout_buffer = io.StringIO()
@@ -326,6 +356,7 @@ def calculate_single_despotic_point(
                     f"DESPOTIC failed for Tg guess {guess:.2f} K (nH={nH_val}, colDen={colDen_val}): {exc}",
                     RuntimeWarning,
                 )
+            _enqueue_retry(fallback_tg)
             continue
 
     if attempt_log is not None:
@@ -373,6 +404,8 @@ def _compute_row(
     repeat_equilibrium: int = 0,
     log_failures: bool = False,
     row_idx: int,
+    reuse_failed_tg: bool = False,
+    reuse_max_insertions: int = 5,
     ) -> Tuple[
         List[float],
         List[float],
@@ -421,18 +454,20 @@ def _compute_row(
             tau_val,
             tau_dust_val,
             tex_val,
-            freq_val,
-        ) = calculate_single_despotic_point(
-            nH_val=nH,
-            colDen_val=colDen,
-            initial_Tg_guesses=dynamic_guesses,
-            log_failures=log_failures,
-            repeat_equilibrium=repeat_equilibrium,
-            chem_network=chem_network,
-            row_idx=row_idx,
-            col_idx=col_idx,
-            attempt_log=row_logs
-        )
+        freq_val,
+    ) = calculate_single_despotic_point(
+        nH_val=nH,
+        colDen_val=colDen,
+        initial_Tg_guesses=dynamic_guesses,
+        log_failures=log_failures,
+        repeat_equilibrium=repeat_equilibrium,
+        chem_network=chem_network,
+        row_idx=row_idx,
+        col_idx=col_idx,
+        attempt_log=row_logs,
+        reuse_failed_tg=reuse_failed_tg,
+        reuse_max_insertions=reuse_max_insertions,
+    )
 
         co_row.append(co_val)
         tg_row.append(tg_val)
@@ -467,6 +502,8 @@ def build_table(
     repeat_equilibrium: int = 0,
     show_progress: bool = False,
     log_failures: bool = False,
+    reuse_failed_tg: bool = False,
+    reuse_max_insertions: int = 3,
 ) -> DespoticTable:
     """Build a DESPOTIC lookup table for a pair of logarithmic grids."""
     nH_points = nH_grid.sample()
@@ -490,6 +527,8 @@ def build_table(
                 chem_network=chem_network,
                 log_failures=log_failures,
                 row_idx=row_idx,
+                reuse_failed_tg=reuse_failed_tg,
+                reuse_max_insertions=reuse_max_insertions,
             )
             for row_idx, nH in enumerate(nH_points)
         )
@@ -546,6 +585,8 @@ def refine_table(
     repeat_equilibrium: int = 0,
     show_progress: bool = False,
     log_failures: bool = False,
+    reuse_failed_tg: bool = False,
+    reuse_max_insertions: int = 3,
 ) -> DespoticTable:
     """Use a coarse table to guide computation on a finer grid."""
     if interpolator is None:
@@ -564,6 +605,8 @@ def refine_table(
         repeat_equilibrium=repeat_equilibrium,
         show_progress=show_progress,
         log_failures=log_failures,
+        reuse_failed_tg=reuse_failed_tg,
+        reuse_max_insertions=reuse_max_insertions,
     )
 
 

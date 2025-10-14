@@ -103,6 +103,11 @@ def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
         default=-1,
         help="Number of parallel workers (default: -1 uses all available cores).",
     )
+    parser.add_argument(
+        "--reuse-final-tg",
+        action="store_true",
+        help="If set, reuse the final Tg from failed DESPOTIC runs as the next temperature guess.",
+    )
     return parser.parse_args(argv[1:])
 
 
@@ -178,12 +183,13 @@ def save_table(prefix: str, table: DespoticTable) -> None:
 
 
 
-def build_table_at_resolution(points: int, 
-                              seed_table: DespoticTable | None, 
+def build_table_at_resolution(points: int,
+                              seed_table: DespoticTable | None,
                               repeat_equilibrium: int = 0,
                               chem_network=NL99,
                               round_digits: int | None = None,
-                              n_jobs: int = -1,) -> DespoticTable:
+                              n_jobs: int = -1,
+                              reuse_failed_tg: bool = False,) -> DespoticTable:
     suffix = " (seeded by previous refinement)" if seed_table else ""
     LOGGER.debug("Preparing DESPOTIC table at resolution %dx%d%s", points, points, suffix)
 
@@ -199,7 +205,8 @@ def build_table_at_resolution(points: int,
             show_progress=True,
             n_jobs=n_jobs,
             repeat_equilibrium=repeat_equilibrium,
-            log_failures=True
+            log_failures=True,
+            reuse_failed_tg=reuse_failed_tg,
         )
 
     interpolator = make_temperature_interpolator(
@@ -217,12 +224,14 @@ def build_table_at_resolution(points: int,
         show_progress=True,
         repeat_equilibrium=repeat_equilibrium,
         n_jobs=n_jobs,
+        reuse_failed_tg=reuse_failed_tg,
     )
 
 
 def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
                            round_digits: int | None = None,
-                           n_jobs: int = -1) -> DespoticTable:
+                           n_jobs: int = -1,
+                           reuse_failed_tg: bool = False) -> DespoticTable:
     points = table.co_int_tb.shape[0]
     LOGGER.info("Refining temperature guesses on existing %dx%d grid", points, points)
 
@@ -246,6 +255,7 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
         show_progress=True,
         repeat_equilibrium=repeat_equilibrium,
         n_jobs=n_jobs,
+        reuse_failed_tg=reuse_failed_tg,
     )
 
 
@@ -258,13 +268,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     configure_logging(log_path)
     LOGGER.info("Writing logs to %s", log_path)
     LOGGER.info(
-        "CLI arguments: resolution=%s, network=%s, repeat=%d, fill=%s, round=%s, n_jobs=%d",
+        "CLI arguments: resolution=%s, network=%s, repeat=%d, fill=%s, round=%s, n_jobs=%d, reuse_final_tg=%s",
         args.resolution,
         args.network,
         args.repeat,
         args.fill,
         args.round_digits,
         args.n_jobs,
+        args.reuse_final_tg,
     )
 
     resolution_steps = tuple(args.resolution)
@@ -273,6 +284,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     fill_requested = args.fill
     round_digits = args.round_digits
     n_jobs = args.n_jobs
+    reuse_failed_tg = args.reuse_final_tg
     previous_refined: DespoticTable | None = None
 
 
@@ -290,6 +302,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             chem_network=chem_network,
             round_digits=round_digits,   
             n_jobs=n_jobs,
+            reuse_failed_tg=reuse_failed_tg,
         )
 
         # Save Table

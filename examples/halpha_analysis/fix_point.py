@@ -112,6 +112,8 @@ def recompute_low_co_cells(
     col_span: Tuple[int, int] | None = None,
     nH_range: Tuple[float, float] | None = None,
     col_range: Tuple[float, float] | None = None,
+    reuse_failed_tg: bool = False,
+    reuse_max_insertions: int = 3,
 ) -> DespoticTable:
     co_grid = np.array(table.co_int_tb, copy=True)
     tg_grid = np.array(table.tg_final, copy=True)
@@ -188,6 +190,8 @@ def recompute_low_co_cells(
             row_idx=int(row_idx),
             col_idx=int(col_idx),
             attempt_log=row_log,
+            reuse_failed_tg=reuse_failed_tg,
+            reuse_max_insertions=reuse_max_insertions,
         )
         return (
             row_idx,
@@ -329,6 +333,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         metavar=("START", "END"),
         help="Only consider column indices in [START, END) (0-based).",
     )
+    parser.add_argument(
+        "--reuse-final-tg",
+        action="store_true",
+        help="If set, reuse the final Tg from failed DESPOTIC attempts as the next guess.",
+    )
     args = parser.parse_args(argv)
 
     output_dir = args.output_npz.parent
@@ -337,17 +346,19 @@ def main(argv: Sequence[str] | None = None) -> None:
     configure_logging(log_path)
     LOGGER.info("Writing logs to %s", log_path)
     LOGGER.info(
-        "CLI arguments: table=%s output=%s threshold=%s network=%s repeat=%d n_jobs=%d",
+        "CLI arguments: table=%s output=%s threshold=%s network=%s repeat=%d n_jobs=%d reuse_final_tg=%s",
         args.table_npz,
         args.output_npz,
         args.threshold,
         args.network,
         args.repeat,
         args.n_jobs,
+        args.reuse_final_tg,
     )
     tag = args.output_npz.stem.replace("table_", "")
 
     table = load_table(args.table_npz)
+    reuse_failed_tg = args.reuse_final_tg
     new_table = recompute_low_co_cells(
         table,
         threshold=args.threshold,
@@ -362,6 +373,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         col_span=tuple(args.col_span) if args.col_span else None,
         nH_range=tuple(args.nH_range) if args.nH_range else None,
         col_range=tuple(args.col_range) if args.col_range else None,
+        reuse_failed_tg=reuse_failed_tg,
     )
 
     recomputed_plot = output_dir / f"co_int_TB_{tag}.png"
