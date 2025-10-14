@@ -78,7 +78,7 @@ def plot_table(
     title: str,
     cbar_label: str,
     show: bool = SHOW_PLOTS,
-    use_log: bool = True,
+    use_log: bool = False,
 ) -> None:
     """a lookup table heatmap."""
 
