@@ -78,17 +78,36 @@ def plot_table(
     title: str,
     cbar_label: str,
     show: bool = SHOW_PLOTS,
-    use_log: bool = False,
+    use_log: bool = True,
 ) -> None:
     """a lookup table heatmap."""
 
-    masked = np.ma.masked_where(np.isnan(data), data)
+    invalid = ~np.isfinite(data)
+    if use_log:
+        invalid |= data <= 0
+    masked = np.ma.masked_array(data, mask=invalid)
 
-    X, Y = np.meshgrid(table.col_density_values, table.nH_values)
+    def _log_edges(values: np.ndarray) -> np.ndarray:
+        if values.size < 2:
+            raise ValueError("Need at least two grid points to compute edges.")
+        log_values = np.log10(values)
+        deltas = np.diff(log_values)
+        edges = np.empty(values.size + 1, dtype=float)
+        edges[1:-1] = log_values[:-1] + deltas / 2.0
+        edges[0] = log_values[0] - deltas[0] / 2.0
+        edges[-1] = log_values[-1] + deltas[-1] / 2.0
+        return np.power(10.0, edges)
+
+    col_edges = _log_edges(table.col_density_values)
+    nH_edges = _log_edges(table.nH_values)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    norm = LogNorm() if use_log else None
-    mesh = ax.pcolormesh(X, Y, masked, shading="auto", cmap="viridis", norm=norm)
+    norm = None
+    if use_log:
+        valid_values = masked.compressed()
+        if valid_values.size:
+            norm = LogNorm(vmin=valid_values.min(), vmax=valid_values.max())
+    mesh = ax.pcolormesh(col_edges, nH_edges, masked, shading="auto", cmap="viridis", norm=norm)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("Column Density (cm$^{-2}$)")
@@ -241,8 +260,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             data=raw_table.tg_final,
             output_path=str(output_dir / f"tg_final_{tag}_raw.png"),
             title=f"DESPOTIC Gas Temperature ({tag} raw)",
-            cbar_label="Tg (K)",
-            use_log=False,
+            cbar_label="Tg (K)"
         )
         plot_table(
             table=raw_table,
