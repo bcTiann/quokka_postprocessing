@@ -122,7 +122,16 @@ def recompute_low_co_cells(
 
     def _evaluate_cell(row_idx: int, col_idx: int):
         row_log: list[AttemptRecord] = []
-        co_val, tg_val = calculate_single_despotic_point(
+        (
+            co_val,
+            tg_val,
+            intensity_val,
+            lum_val,
+            tau_val,
+            tau_dust_val,
+            tex_val,
+            freq_val,
+        ) = calculate_single_despotic_point(
             nH_val=float(nH_values[row_idx]),
             colDen_val=float(col_values[col_idx]),
             initial_Tg_guesses=tg_guesses,
@@ -133,7 +142,19 @@ def recompute_low_co_cells(
             col_idx=int(col_idx),
             attempt_log=row_log,
         )
-        return row_idx, col_idx, co_val, tg_val, tuple(row_log)
+        return (
+            row_idx,
+            col_idx,
+            co_val,
+            tg_val,
+            intensity_val,
+            lum_val,
+            tau_val,
+            tau_dust_val,
+            tex_val,
+            freq_val,
+            tuple(row_log),
+        )
 
     if n_jobs == 1:
         results = [_evaluate_cell(int(r), int(c)) for r, c in low_indices]
@@ -144,18 +165,28 @@ def recompute_low_co_cells(
             delayed(_evaluate_cell)(int(r), int(c)) for r, c in low_indices
         )
 
-    for row_idx, col_idx, co_val, tg_val, row_log in results:
+    for (
+        row_idx,
+        col_idx,
+        co_val,
+        tg_val,
+        intensity_val,
+        lum_val,
+        tau_val,
+        tau_dust_val,
+        tex_val,
+        freq_val,
+        row_log,
+    ) in results:
         co_grid[row_idx, col_idx] = co_val
         tg_grid[row_idx, col_idx] = tg_val
+        intensity_grid[row_idx, col_idx] = intensity_val
+        lum_grid[row_idx, col_idx] = lum_val
+        tau_grid[row_idx, col_idx] = tau_val
+        tau_dust_grid[row_idx, col_idx] = tau_dust_val
+        tex_grid[row_idx, col_idx] = tex_val
+        freq_grid[row_idx, col_idx] = freq_val
         attempt_records.extend(row_log)
-        if row_log:
-            last = row_log[-1]
-            intensity_grid[row_idx, col_idx] = last.int_intensity
-            lum_grid[row_idx, col_idx] = last.lum_per_h
-            tau_grid[row_idx, col_idx] = last.tau
-            tau_dust_grid[row_idx, col_idx] = last.tau_dust
-            tex_grid[row_idx, col_idx] = last.tex
-            freq_grid[row_idx, col_idx] = last.frequency
 
     return DespoticTable(
         co_int_tb=co_grid,
