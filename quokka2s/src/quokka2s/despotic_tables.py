@@ -7,17 +7,23 @@ import warnings
 
 import contextlib
 import io
+import logging
 
 
 import numpy as np
 from joblib import Parallel, delayed
 from scipy.interpolate import RectBivariateSpline, griddata
-from tqdm.auto import tqdm
+try:  # prefer rich-rendered progress bars for better visibility
+    from tqdm.rich import tqdm
+except Exception:  # pragma: no cover - fallback when rich support unavailable
+    from tqdm.auto import tqdm
 from tqdm_joblib import tqdm_joblib
 
 
 from despotic import cloud
 from despotic.chemistry import NL99, NL99_GC, GOW
+
+LOGGER = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class LogGrid:
@@ -90,6 +96,18 @@ DEFAULT_EMITTER_ABUNDANCE = 8.0e-9
 CO_INT_THRESHOLD = 1.0e-8
 
 
+def _log_despotic_stdout(buffer: io.StringIO) -> None:
+    """Flush redirected stdout from DESPOTIC calls into the logger."""
+    output = buffer.getvalue()
+    if not output:
+        return
+    buffer.truncate(0)
+    buffer.seek(0)
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("make: ***"):
+            LOGGER.warning("DESPOTIC: %s", stripped)
+
 
 def calculate_single_despotic_point(
     nH_val: float,
@@ -127,6 +145,7 @@ def calculate_single_despotic_point(
         last_guess = guess
         try:
             cell = cloud()
+            cell.noWarn = True
             cell.nH = nH_val
             cell.colDen = colDen_val
             cell.Tg = guess
@@ -153,7 +172,10 @@ def calculate_single_despotic_point(
 
             cell.addEmitter("CO", emitter_abundance)
 
-            converge = cell.setChemEq(network=chem_network, evolveTemp="iterateDust")
+            stdout_buffer = io.StringIO()
+            with contextlib.redirect_stdout(stdout_buffer):
+                converge = cell.setChemEq(network=chem_network, evolveTemp="iterateDust")
+            _log_despotic_stdout(stdout_buffer)
 
             if not converge:
                 final_tg = float(cell.Tg)
@@ -189,7 +211,10 @@ def calculate_single_despotic_point(
                     )
                 continue
 
-            lines = cell.lineLum("CO")
+            stdout_buffer = io.StringIO()
+            with contextlib.redirect_stdout(stdout_buffer):
+                lines = cell.lineLum("CO")
+            _log_despotic_stdout(stdout_buffer)
             co_int_TB = lines[0]["intTB"]
             intensity_with_dust = lines[0]["intIntensity"]
             lumPerH = lines[0]["lumPerH"]

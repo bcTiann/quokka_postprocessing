@@ -1,6 +1,9 @@
-import numpy as np
 import csv
 import sys
+import logging
+import warnings
+
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from scipy.interpolate import griddata
@@ -44,6 +47,40 @@ NETWORK_MAP = {
     "nl99_gc": NL99_GC,
     "gow": GOW,
 }
+
+LOGGER = logging.getLogger(__name__)
+
+
+def configure_logging(log_path: Path) -> None:
+    """Configure root logging to stream to stdout and the provided file."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Clear existing handlers to avoid duplicate logs when re-running
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    file_handler = logging.FileHandler(log_path, mode="w")
+    file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
+
+    logging.captureWarnings(True)
+    warnings.simplefilter("always")
+    try:
+        from tqdm import TqdmExperimentalWarning  # type: ignore
+    except ImportError:  # pragma: no cover - tqdm < 4.62
+        pass
+    else:
+        warnings.simplefilter("ignore", TqdmExperimentalWarning)
+
+
 def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build DESPOTIC tables with selectable resolution/network/output."
@@ -148,7 +185,7 @@ def build_table_at_resolution(points: int,
                               round_digits: int | None = None,
                               n_jobs: int = -1,) -> DespoticTable:
     suffix = " (seeded by previous refinement)" if seed_table else ""
-    print(f"Building DESPOTIC table at resolution {points}x{points}{suffix}")
+    LOGGER.debug("Preparing DESPOTIC table at resolution %dx%d%s", points, points, suffix)
 
     nH_grid = LogGrid(*N_H_RANGE, points, round_digits=round_digits)
     col_grid = LogGrid(*COL_DEN_RANGE, points, round_digits=round_digits)
@@ -187,7 +224,7 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
                            round_digits: int | None = None,
                            n_jobs: int = -1) -> DespoticTable:
     points = table.co_int_tb.shape[0]
-    print(f"Refining temperature guesses on existing {points}x{points} grid")
+    LOGGER.info("Refining temperature guesses on existing %dx%d grid", points, points)
 
     nH_grid = LogGrid(table.nH_values[0], table.nH_values[-1], points, round_digits=round_digits)
     col_grid = LogGrid(table.col_density_values[0], table.col_density_values[-1], points, round_digits=round_digits)
@@ -217,6 +254,19 @@ def main(argv: Sequence[str] | None = None) -> None:
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    log_path = output_dir / "build.log"
+    configure_logging(log_path)
+    LOGGER.info("Writing logs to %s", log_path)
+    LOGGER.info(
+        "CLI arguments: resolution=%s, network=%s, repeat=%d, fill=%s, round=%s, n_jobs=%d",
+        args.resolution,
+        args.network,
+        args.repeat,
+        args.fill,
+        args.round_digits,
+        args.n_jobs,
+    )
+
     resolution_steps = tuple(args.resolution)
     chem_network = NETWORK_MAP[args.network]
     repeat_equilibrium = args.repeat
@@ -232,7 +282,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         tag = f"{points}x{points}"
 ##########################################################################################
         # Build Table
-        print(f"Building DESPOTIC table at resolution {tag}")
+        LOGGER.info("Building DESPOTIC table at resolution %s", tag)
         raw_table = build_table_at_resolution(
             points,
             previous_refined,
@@ -245,7 +295,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         # Save Table
         raw_prefix = output_dir / f"table_{tag}_raw"
         save_table(raw_prefix, raw_table)
-        print(f"Raw {tag} table saved to {raw_prefix.with_suffix('.npz')}")
+        LOGGER.info("Raw %s table saved to %s", tag, raw_prefix.with_suffix(".npz"))
         
         # Plot Table
         plot_table(
@@ -338,9 +388,9 @@ def main(argv: Sequence[str] | None = None) -> None:
                     record.frequency,
                     record.error_message or "",
                 ])
-            print(f"{len(raw_table.attempts)} attempts logged to {attempts_path}")
+            LOGGER.info("%d attempts logged to %s", len(raw_table.attempts), attempts_path)
         else:
-            print("No DESPOTIC attempts recorded for this table.")
+            LOGGER.info("No DESPOTIC attempts recorded for this table.")
         
         next_seed = raw_table
 ##########################################################################################
@@ -437,11 +487,11 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         previous_refined = next_seed
 
-    print("Multi-resolution DESPOTIC tables generated successfully.")
+    LOGGER.info("Multi-resolution DESPOTIC tables generated successfully.")
 
 
 if __name__ == "__main__":
     start = time.perf_counter()
     main()
     elapsed = time.perf_counter() - start
-    print(f"Total runtime: {elapsed:.2f} s")
+    LOGGER.info("Total runtime: %.2f s", elapsed)

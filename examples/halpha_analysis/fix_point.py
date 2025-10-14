@@ -2,10 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import logging
+import warnings
+import sys
 from pathlib import Path
 from typing import Sequence, Tuple
 
 import numpy as np
+
+try:  # Prefer rich-rendered bars
+    from tqdm.rich import tqdm
+except Exception:  # pragma: no cover - fallback if rich support unavailable
+    from tqdm.auto import tqdm
+from tqdm_joblib import tqdm_joblib
 
 from quokka2s.despotic_tables import (
     AttemptRecord,
@@ -27,6 +36,31 @@ NETWORK_MAP = {
     "nl99_gc": NL99_GC,
     "gow": GOW,
 }
+
+LOGGER = logging.getLogger(__name__)
+
+
+def configure_logging(log_path: Path) -> None:
+    """Configure logging for fix_point workflow."""
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    file_handler = logging.FileHandler(log_path, mode="w")
+    file_handler.setFormatter(formatter)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
+
+    logging.captureWarnings(True)
+    warnings.simplefilter("always")
 
 
 def load_table(npz_path: Path) -> DespoticTable:
@@ -92,32 +126,45 @@ def recompute_low_co_cells(
     cols = select_indices(col_values, col_span, col_range)
 
     if rows.size == 0 or cols.size == 0:
-        print("No cells match the specified region; skipping recomputation.")
+        LOGGER.info("No cells match the specified region; skipping recomputation.")
         return table
 
     region_mask = np.zeros_like(co_grid, dtype=bool)
     region_mask[np.ix_(rows, cols)] = True
 
-    print(
-        f"Selected region rows: {rows[0]}–{rows[-1]} (count: {rows.size}), "
-        f"cols: {cols[0]}–{cols[-1]} (count: {cols.size})"
+    LOGGER.info(
+        "Selected region rows: %d–%d (count: %d), cols: %d–%d (count: %d)",
+        rows[0],
+        rows[-1],
+        rows.size,
+        cols[0],
+        cols[-1],
+        cols.size,
     )
 
     mask = (np.isnan(co_grid) | (co_grid < threshold)) & region_mask
     if not np.any(mask):
-        print(f"No cells require recomputation (threshold={threshold}).")
+        LOGGER.info("No cells require recomputation (threshold=%s).", threshold)
         return table
 
     attempt_records: list = []
     low_indices = np.argwhere(mask)
-    print(f"Recomputing {len(low_indices)} cells with CO intensity < {threshold:.3e}")
+    LOGGER.info(
+        "Recomputing %d cells with CO intensity < %.3e",
+        len(low_indices),
+        threshold,
+    )
     for row_idx, col_idx in low_indices:
         nH = float(nH_values[row_idx])
         col = float(col_values[col_idx])
         current_co = float(co_grid[row_idx, col_idx])
-        print(
-            f"  (row={row_idx}, col={col_idx}) "
-            f"nH={nH:.6e} cm^-3 colDen={col:.6e} cm^-2 CO_before={current_co:.6e}"
+        LOGGER.debug(
+            "Task row=%d col=%d nH=%.6e cm^-3 colDen=%.6e cm^-2 CO_before=%.6e",
+            row_idx,
+            col_idx,
+            nH,
+            col,
+            current_co,
         )
 
     def _evaluate_cell(row_idx: int, col_idx: int):
@@ -157,13 +204,26 @@ def recompute_low_co_cells(
         )
 
     if n_jobs == 1:
-        results = [_evaluate_cell(int(r), int(c)) for r, c in low_indices]
+        results = []
+        for r, c in tqdm(
+            [tuple(idx) for idx in low_indices],
+            desc="Recomputing cells",
+            unit="cell",
+        ):
+            results.append(_evaluate_cell(int(r), int(c)))
     else:
         from joblib import Parallel, delayed
 
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(_evaluate_cell)(int(r), int(c)) for r, c in low_indices
-        )
+        with tqdm_joblib(
+            tqdm(
+                desc="Recomputing cells",
+                total=len(low_indices),
+                unit="cell",
+            )
+        ):
+            results = Parallel(n_jobs=n_jobs)(
+                delayed(_evaluate_cell)(int(r), int(c)) for r, c in low_indices
+            )
 
     for (
         row_idx,
@@ -273,6 +333,18 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     output_dir = args.output_npz.parent
     output_dir.mkdir(parents=True, exist_ok=True)
+    log_path = output_dir / f"{args.output_npz.stem}.log"
+    configure_logging(log_path)
+    LOGGER.info("Writing logs to %s", log_path)
+    LOGGER.info(
+        "CLI arguments: table=%s output=%s threshold=%s network=%s repeat=%d n_jobs=%d",
+        args.table_npz,
+        args.output_npz,
+        args.threshold,
+        args.network,
+        args.repeat,
+        args.n_jobs,
+    )
     tag = args.output_npz.stem.replace("table_", "")
 
     table = load_table(args.table_npz)
@@ -406,9 +478,9 @@ def main(argv: Sequence[str] | None = None) -> None:
                     ]
                 )
 
-    print(f"Wrote updated table to {args.output_npz}")
+    LOGGER.info("Wrote updated table to %s", args.output_npz)
     if new_table.attempts:
-        print(f"Wrote recomputation attempts to {attempts_csv}")
+        LOGGER.info("Wrote recomputation attempts to %s", attempts_csv)
 
 
 if __name__ == "__main__":
