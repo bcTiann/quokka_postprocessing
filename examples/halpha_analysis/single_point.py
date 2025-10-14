@@ -27,10 +27,10 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 5.312
-cell.nH = 1.0e+1
+cell.Tg = 14.9
+cell.nH = 53.3669923120631
 # cell.nH = 3206.2671377973843
-cell.colDen = 9.102981779915189e+21
+cell.colDen = 1e+24
 
 
 co_line_map = []
@@ -57,13 +57,18 @@ cell.rad.chi        = 1.0        # ISRF normalized to Solar neighborhood
 
 cell.addEmitter("CO", 8.0e-9)
 
+
+start_time = time.time()  # 2. 記錄開始時間
+
 cell.comp.computeDerived(cell.nH)
 
 # --- 執行核心計算 ---
+print(f"-------set Temp Eq --------")
 # cell.setTempEq()
-# print(f"mu = {cell.comp.mu}")
+print(f"mu = {cell.comp.mu}")
 print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
+print(f"----------------------------")
 
 converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
 print(f"converge = {converge}")
@@ -75,9 +80,15 @@ lines = cell.lineLum("CO")
 co_int_TB = lines[0]['intTB']
 co_line_map.append(co_int_TB)
 
+end_time = time.time()  # 3. 記錄結束時間
+
+elapsed_time = end_time - start_time
+print(f"程式運算時間: {elapsed_time:.4f} 秒") # 格式化輸出到小數點後4位
 
 print(f"co_line_map = {co_line_map}")
 print(f"Tg final = {cell.Tg}")
+
+
 
 
 # NL99_GC

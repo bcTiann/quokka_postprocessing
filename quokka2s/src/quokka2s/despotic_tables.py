@@ -55,6 +55,12 @@ class AttemptRecord:
     converged: bool
     repeat_equilibrium: int
     co_int_TB: float
+    int_intensity: float
+    lum_per_h: float
+    tau: float
+    tau_dust: float
+    tex: float
+    frequency: float
     error_message: str | None = None
 
 
@@ -66,6 +72,12 @@ class DespoticTable:
 
     co_int_tb: np.ndarray
     tg_final: np.ndarray
+    int_intensity: np.ndarray
+    lum_per_h: np.ndarray
+    tau: np.ndarray
+    tau_dust: np.ndarray
+    tex: np.ndarray
+    frequency: np.ndarray
     nH_values: np.ndarray
     col_density_values: np.ndarray
     attempts: Tuple[AttemptRecord, ...] = field(default_factory=tuple)
@@ -91,15 +103,25 @@ def calculate_single_despotic_point(
     row_idx: int | None = None, 
     col_idx: int | None = None,
     attempt_log: list[AttemptRecord] | None = None,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, float, float, float, float, float, float]:
     """Run DESPOTIC for one (nH, column density) pair.
 
-    Returns (co_int_TB, final_Tg); (np.nan, np.nan) if all guesses fail.
+    Returns
+    -------
+    Tuple
+        (co_int_TB, final_Tg, intIntensity, lumPerH, tau, tauDust, Tex, freq)
+        Values are ``nan`` if all guesses fail.
     """
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
     last_co_int = float("nan")
+    last_int_intensity = float("nan")
+    last_lum_per_h = float("nan")
+    last_tau = float("nan")
+    last_tau_dust = float("nan")
+    last_tex = float("nan")
+    last_freq = float("nan")
     for guess in initial_Tg_guesses:
         attempt_number += 1
         last_guess = guess
@@ -137,6 +159,12 @@ def calculate_single_despotic_point(
                 final_tg = float(cell.Tg)
                 last_final_tg = final_tg
                 last_co_int = float("nan")
+                last_int_intensity = float("nan")
+                last_lum_per_h = float("nan")
+                last_tau = float("nan")
+                last_tau_dust = float("nan")
+                last_tex = float("nan")
+                last_freq = float("nan")
                 if attempt_log is not None:
                     attempt_log.append(
                         AttemptRecord(
@@ -151,15 +179,35 @@ def calculate_single_despotic_point(
                             converged=False,
                             repeat_equilibrium=repeat_equilibrium,
                             co_int_TB=float("nan"),
+                            int_intensity=float("nan"),
+                            lum_per_h=float("nan"),
+                            tau=float("nan"),
+                            tau_dust=float("nan"),
+                            tex=float("nan"),
+                            frequency=float("nan"),
                         )
                     )
                 continue
 
             lines = cell.lineLum("CO")
             co_int_TB = lines[0]["intTB"]
+            intensity_with_dust = lines[0]["intIntensity"]
+            lumPerH = lines[0]["lumPerH"]
+            tau = lines[0]["tau"]
+            tau_dust = lines[0]["tauDust"]
+            tex = lines[0]["Tex"]
+            freq = lines[0]["freq"]
+
+
             final_Tg = float(cell.Tg)
             last_final_tg = final_Tg
             last_co_int = co_int_TB
+            last_int_intensity = intensity_with_dust
+            last_lum_per_h = lumPerH
+            last_tau = tau
+            last_tau_dust = tau_dust
+            last_tex = tex
+            last_freq = freq
 
             # if (not np.isfinite(co_int_TB)) or (co_int_TB < CO_INT_THRESHOLD):
             #     if attempt_log is not None:
@@ -194,13 +242,37 @@ def calculate_single_despotic_point(
                         converged=True,
                         repeat_equilibrium=repeat_equilibrium,
                         co_int_TB=co_int_TB,
+                        int_intensity=intensity_with_dust,
+                        lum_per_h=lumPerH,
+                        tau=tau,
+                        tau_dust=tau_dust,
+                        tex=tex,
+                        frequency=freq,
                     )
                 )
-            return co_int_TB, final_Tg
+            return (
+                co_int_TB,
+                final_Tg,
+                intensity_with_dust,
+                lumPerH,
+                tau,
+                tau_dust,
+                tex,
+                freq,
+            )
 
         except Exception as exc:  # pragma: no cover - DESPOTIC exceptions vary
-            last_final_tg = float("nan")
+            fallback_cell = locals().get("cell")
+            fallback_tg = float(getattr(fallback_cell, "Tg", float("nan"))) if fallback_cell is not None else float("nan")
+
+            last_final_tg = fallback_tg
             last_co_int = float("nan")
+            last_int_intensity = float("nan")
+            last_lum_per_h = float("nan")
+            last_tau = float("nan")
+            last_tau_dust = float("nan")
+            last_tex = float("nan")
+            last_freq = float("nan")
             if attempt_log is not None:
                 attempt_log.append(
                     AttemptRecord(
@@ -209,12 +281,18 @@ def calculate_single_despotic_point(
                         nH=nH_val,
                         colDen=colDen_val,
                         tg_guess=guess,
-                        final_Tg=float("nan"),
+                        final_Tg=fallback_tg,
                         attempt_number=attempt_number,
                         attempt_type="exception",
                         converged=False,
                         repeat_equilibrium=repeat_equilibrium,
                         co_int_TB=float("nan"),
+                        int_intensity=float("nan"),
+                        lum_per_h=float("nan"),
+                        tau=float("nan"),
+                        tau_dust=float("nan"),
+                        tex=float("nan"),
+                        frequency=float("nan"),
                         error_message=str(exc),
                     )
                 )
@@ -239,9 +317,24 @@ def calculate_single_despotic_point(
                 converged=False,
                 repeat_equilibrium=repeat_equilibrium,
                 co_int_TB=last_co_int,
+                int_intensity=last_int_intensity,
+                lum_per_h=last_lum_per_h,
+                tau=last_tau,
+                tau_dust=last_tau_dust,
+                tex=last_tex,
+                frequency=last_freq,
             )
         )
-    return float("nan"), float("nan")
+    return (
+        float("nan"),
+        float("nan"),
+        float("nan"),
+        float("nan"),
+        float("nan"),
+        float("nan"),
+        float("nan"),
+        float("nan"),
+    )
 
 
 def _compute_row(
@@ -255,11 +348,27 @@ def _compute_row(
     repeat_equilibrium: int = 0,
     log_failures: bool = False,
     row_idx: int,
-) -> Tuple[List[float], List[float], list[AttemptRecord]]:
-    
+    ) -> Tuple[
+        List[float],
+        List[float],
+        List[float],
+        List[float],
+        List[float],
+        List[float],
+        List[float],
+        List[float],
+        list[AttemptRecord],
+    ]:
+
     co_row: List[float] = []
     tg_row: List[float] = []
-    
+    intensity_row: List[float] = []
+    lum_row: List[float] = []
+    tau_row: List[float] = []
+    tau_dust_row: List[float] = []
+    tex_row: List[float] = []
+    freq_row: List[float] = []
+
     if row_logs is None:
         row_logs = []  
 
@@ -279,7 +388,16 @@ def _compute_row(
                         RuntimeWarning,
                     )
 
-        co_val, tg_val = calculate_single_despotic_point(
+        (
+            co_val,
+            tg_val,
+            intensity_val,
+            lum_val,
+            tau_val,
+            tau_dust_val,
+            tex_val,
+            freq_val,
+        ) = calculate_single_despotic_point(
             nH_val=nH,
             colDen_val=colDen,
             initial_Tg_guesses=dynamic_guesses,
@@ -293,8 +411,24 @@ def _compute_row(
 
         co_row.append(co_val)
         tg_row.append(tg_val)
+        intensity_row.append(intensity_val)
+        lum_row.append(lum_val)
+        tau_row.append(tau_val)
+        tau_dust_row.append(tau_dust_val)
+        tex_row.append(tex_val)
+        freq_row.append(freq_val)
 
-    return co_row, tg_row, row_logs
+    return (
+        co_row,
+        tg_row,
+        intensity_row,
+        lum_row,
+        tau_row,
+        tau_dust_row,
+        tex_row,
+        freq_row,
+        row_logs,
+    )
 
 
 def build_table(
@@ -339,15 +473,38 @@ def build_table(
         progress_bar.close()
     
 
-    co_rows, tg_rows, attempt_lists = zip(*results)
+    (
+        co_rows,
+        tg_rows,
+        intensity_rows,
+        lum_rows,
+        tau_rows,
+        tau_dust_rows,
+        tex_rows,
+        freq_rows,
+        attempt_lists,
+    ) = zip(*results)
+
     co_int_tb = np.array(co_rows)
     tg_final = np.array(tg_rows)
+    int_intensity = np.array(intensity_rows)
+    lum_per_h = np.array(lum_rows)
+    tau = np.array(tau_rows)
+    tau_dust = np.array(tau_dust_rows)
+    tex = np.array(tex_rows)
+    freq = np.array(freq_rows)
     from itertools import chain
     attempts = tuple(chain.from_iterable(attempt_lists))
 
     return DespoticTable(
         co_int_tb=co_int_tb,
         tg_final=tg_final,
+        int_intensity=int_intensity,
+        lum_per_h=lum_per_h,
+        tau=tau,
+        tau_dust=tau_dust,
+        tex=tex,
+        frequency=freq,
         nH_values=nH_points,
         col_density_values=col_den_points,
         attempts=attempts
@@ -478,14 +635,26 @@ def fill_missing_values(table: DespoticTable) -> DespoticTable:
     
     co_filled = _fill_grid(table.co_int_tb, log_space=False)
     tg_filled = _fill_grid(table.tg_final, log_space=True)
+    intensity_filled = _fill_grid(table.int_intensity, log_space=True)
+    lum_filled = _fill_grid(table.lum_per_h, log_space=True)
+    tau_filled = _fill_grid(table.tau, log_space=False)
+    tau_dust_filled = _fill_grid(table.tau_dust, log_space=False)
+    tex_filled = _fill_grid(table.tex, log_space=False)
+    freq_filled = table.frequency  # frequency is fixed by transition; assume complete
 
     return DespoticTable(
-    co_int_tb=co_filled,
-    tg_final=tg_filled,
-    nH_values=table.nH_values,
-    col_density_values=table.col_density_values,
-    attempts=table.attempts,
-)
+        co_int_tb=co_filled,
+        tg_final=tg_filled,
+        int_intensity=intensity_filled,
+        lum_per_h=lum_filled,
+        tau=tau_filled,
+        tau_dust=tau_dust_filled,
+        tex=tex_filled,
+        frequency=freq_filled,
+        nH_values=table.nH_values,
+        col_density_values=table.col_density_values,
+        attempts=table.attempts,
+    )
 
 
 def compute_average(

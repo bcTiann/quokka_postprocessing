@@ -31,9 +31,22 @@ NETWORK_MAP = {
 
 def load_table(npz_path: Path) -> DespoticTable:
     with np.load(npz_path) as data:
+        shape = data["co_int_tb"].shape
+
+        def get_array(key: str) -> np.ndarray:
+            if key in data:
+                return data[key]
+            return np.full(shape, np.nan)
+
         return DespoticTable(
             co_int_tb=data["co_int_tb"],
             tg_final=data["tg_final"],
+            int_intensity=get_array("int_intensity"),
+            lum_per_h=get_array("lum_per_h"),
+            tau=get_array("tau"),
+            tau_dust=get_array("tau_dust"),
+            tex=get_array("tex"),
+            frequency=get_array("frequency"),
             nH_values=data["nH"],
             col_density_values=data["col_density"],
             attempts=(),
@@ -68,6 +81,12 @@ def recompute_low_co_cells(
 ) -> DespoticTable:
     co_grid = np.array(table.co_int_tb, copy=True)
     tg_grid = np.array(table.tg_final, copy=True)
+    intensity_grid = np.array(table.int_intensity, copy=True)
+    lum_grid = np.array(table.lum_per_h, copy=True)
+    tau_grid = np.array(table.tau, copy=True)
+    tau_dust_grid = np.array(table.tau_dust, copy=True)
+    tex_grid = np.array(table.tex, copy=True)
+    freq_grid = np.array(table.frequency, copy=True)
 
     rows = select_indices(nH_values, row_span, nH_range)
     cols = select_indices(col_values, col_span, col_range)
@@ -129,10 +148,24 @@ def recompute_low_co_cells(
         co_grid[row_idx, col_idx] = co_val
         tg_grid[row_idx, col_idx] = tg_val
         attempt_records.extend(row_log)
+        if row_log:
+            last = row_log[-1]
+            intensity_grid[row_idx, col_idx] = last.int_intensity
+            lum_grid[row_idx, col_idx] = last.lum_per_h
+            tau_grid[row_idx, col_idx] = last.tau
+            tau_dust_grid[row_idx, col_idx] = last.tau_dust
+            tex_grid[row_idx, col_idx] = last.tex
+            freq_grid[row_idx, col_idx] = last.frequency
 
     return DespoticTable(
         co_int_tb=co_grid,
         tg_final=tg_grid,
+        int_intensity=intensity_grid,
+        lum_per_h=lum_grid,
+        tau=tau_grid,
+        tau_dust=tau_dust_grid,
+        tex=tex_grid,
+        frequency=freq_grid,
         nH_values=table.nH_values,
         col_density_values=table.col_density_values,
         attempts=table.attempts + tuple(attempt_records),
@@ -234,6 +267,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         data=new_table.co_int_tb,
         output_path=str(recomputed_plot),
         title=f"DESPOTIC Lookup Table ({tag})",
+        cbar_label="CO Integrated Brightness Temp (K km/s)",
     )
 
     tg_plot = output_dir / f"tg_final_{tag}.png"
@@ -242,11 +276,49 @@ def main(argv: Sequence[str] | None = None) -> None:
         data=new_table.tg_final,
         output_path=str(tg_plot),
         title=f"DESPOTIC Gas Temperature ({tag})",
+        cbar_label="Tg (K)",
+        use_log=False,
+    )
+    plot_table(
+        table=new_table,
+        data=new_table.int_intensity,
+        output_path=str(output_dir / f"intensity_{tag}.png"),
+        title=f"CO Integrated Intensity ({tag})",
+        cbar_label="Integrated Intensity (erg cm$^{-2}$ s$^{-1}$ sr$^{-1}$)",
+    )
+    plot_table(
+        table=new_table,
+        data=new_table.lum_per_h,
+        output_path=str(output_dir / f"lum_per_H_{tag}.png"),
+        title=f"Luminosity per H ({tag})",
+        cbar_label="Luminosity per H (erg s$^{-1}$ H$^{-1}$)",
+    )
+    plot_table(
+        table=new_table,
+        data=new_table.tau,
+        output_path=str(output_dir / f"tau_{tag}.png"),
+        title=f"Line Optical Depth ({tag})",
+        cbar_label="Line Optical Depth",
+        use_log=False,
+    )
+    plot_table(
+        table=new_table,
+        data=new_table.tau_dust,
+        output_path=str(output_dir / f"tau_dust_{tag}.png"),
+        title=f"Dust Optical Depth ({tag})",
+        cbar_label="Dust Optical Depth",
+        use_log=False,
     )
     np.savez_compressed(
         args.output_npz,
         co_int_tb=new_table.co_int_tb,
         tg_final=new_table.tg_final,
+        int_intensity=new_table.int_intensity,
+        lum_per_h=new_table.lum_per_h,
+        tau=new_table.tau,
+        tau_dust=new_table.tau_dust,
+        tex=new_table.tex,
+        frequency=new_table.frequency,
         nH=new_table.nH_values,
         col_density=new_table.col_density_values,
     )
@@ -270,6 +342,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "converged",
                     "repeat_equilibrium",
                     "co_int_TB",
+                    "int_intensity",
+                    "lum_per_H",
+                    "tau",
+                    "tau_dust",
+                    "Tex",
+                    "frequency",
                     "error_message",
                 ]
             )
@@ -287,6 +365,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                         rec.converged,
                         rec.repeat_equilibrium,
                         rec.co_int_TB,
+                        rec.int_intensity,
+                        rec.lum_per_h,
+                        rec.tau,
+                        rec.tau_dust,
+                        rec.tex,
+                        rec.frequency,
                         rec.error_message or "",
                     ]
                 )

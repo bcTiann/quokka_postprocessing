@@ -70,7 +70,16 @@ def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
 
 
 # def plot_table(data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
-def plot_table(*, table: DespoticTable, data: np.ndarray, output_path: str, title: str, show: bool = SHOW_PLOTS) -> None:
+def plot_table(
+    *,
+    table: DespoticTable,
+    data: np.ndarray,
+    output_path: str,
+    title: str,
+    cbar_label: str,
+    show: bool = SHOW_PLOTS,
+    use_log: bool = True,
+) -> None:
     """a lookup table heatmap."""
 
     masked = np.ma.masked_where(np.isnan(data), data)
@@ -78,7 +87,8 @@ def plot_table(*, table: DespoticTable, data: np.ndarray, output_path: str, titl
     X, Y = np.meshgrid(table.col_density_values, table.nH_values)
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    mesh = ax.pcolormesh(X, Y, masked, shading="auto", cmap="viridis", norm=LogNorm())
+    norm = LogNorm() if use_log else None
+    mesh = ax.pcolormesh(X, Y, masked, shading="auto", cmap="viridis", norm=norm)
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlabel("Column Density (cm$^{-2}$)")
@@ -86,7 +96,7 @@ def plot_table(*, table: DespoticTable, data: np.ndarray, output_path: str, titl
     ax.set_title(title)
 
     cbar = fig.colorbar(mesh, ax=ax)
-    cbar.set_label("CO Integrated Brightness Temp (K km/s)")
+    cbar.set_label(cbar_label)
 
     fig.savefig(output_path, dpi=PLOT_DPI, bbox_inches="tight")
     if show:
@@ -100,6 +110,12 @@ def save_table(prefix: str, table: DespoticTable) -> None:
         prefix,
         co_int_tb=table.co_int_tb,
         tg_final=table.tg_final,
+        int_intensity=table.int_intensity,
+        lum_per_h=table.lum_per_h,
+        tau=table.tau,
+        tau_dust=table.tau_dust,
+        tex=table.tex,
+        frequency=table.frequency,
         nH=table.nH_values,
         col_density=table.col_density_values,
     )
@@ -218,12 +234,45 @@ def main(argv: Sequence[str] | None = None) -> None:
             data=raw_table.co_int_tb,
             output_path=str(output_dir / f"co_int_TB_{tag}_raw.png"),
             title=f"DESPOTIC Lookup Table ({tag} raw)",
+            cbar_label="CO Integrated Brightness Temp (K km/s)",
         )
         plot_table(
             table=raw_table,
             data=raw_table.tg_final,
             output_path=str(output_dir / f"tg_final_{tag}_raw.png"),
             title=f"DESPOTIC Gas Temperature ({tag} raw)",
+            cbar_label="Tg (K)",
+            use_log=False,
+        )
+        plot_table(
+            table=raw_table,
+            data=raw_table.int_intensity,
+            output_path=str(output_dir / f"intensity_{tag}_raw.png"),
+            title=f"CO Integrated Intensity ({tag} raw)",
+            cbar_label="Integrated Intensity (erg cm$^{-2}$ s$^{-1}$ sr$^{-1}$)",
+        )
+        plot_table(
+            table=raw_table,
+            data=raw_table.lum_per_h,
+            output_path=str(output_dir / f"lum_per_H_{tag}_raw.png"),
+            title=f"Luminosity per H ({tag} raw)",
+            cbar_label="Luminosity per H (erg s$^{-1}$ H$^{-1}$)",
+        )
+        plot_table(
+            table=raw_table,
+            data=raw_table.tau,
+            output_path=str(output_dir / f"tau_{tag}_raw.png"),
+            title=f"Line Optical Depth ({tag} raw)",
+            cbar_label="Line Optical Depth",
+            use_log=False,
+        )
+        plot_table(
+            table=raw_table,
+            data=raw_table.tau_dust,
+            output_path=str(output_dir / f"tau_dust_{tag}_raw.png"),
+            title=f"Dust Optical Depth ({tag} raw)",
+            cbar_label="Dust Optical Depth",
+            use_log=False,
         )
 
         if raw_table.attempts:
@@ -242,6 +291,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "converged",
                     "repeat_equilibrium",
                     "co_int_TB",
+                    "int_intensity",
+                    "lum_per_H",
+                    "tau",
+                    "tau_dust",
+                    "Tex",
+                    "frequency",
                     "error_message",
                 ])
                 for record in raw_table.attempts:
@@ -257,6 +312,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                     record.converged,
                     record.repeat_equilibrium,
                     record.co_int_TB,
+                    record.int_intensity,
+                    record.lum_per_h,
+                    record.tau,
+                    record.tau_dust,
+                    record.tex,
+                    record.frequency,
                     record.error_message or "",
                 ])
             print(f"{len(raw_table.attempts)} attempts logged to {attempts_path}")
@@ -307,17 +368,51 @@ def main(argv: Sequence[str] | None = None) -> None:
             filled_plot_path = output_dir / f"co_int_TB_{tag}_filled.png"
 
             plot_table(
-                table=raw_table,
-                data=raw_table.co_int_tb,
+                table=filled,
+                data=filled.co_int_tb,
                 output_path=str(filled_plot_path),
-                title=f"DESPOTIC Lookup Table ({tag} raw)",
+                title=f"DESPOTIC Lookup Table ({tag} filled)",
+                cbar_label="CO Integrated Brightness Temp (K km/s)",
             )
 
             plot_table(
-                table=raw_table,
-                data=raw_table.tg_final,
+                table=filled,
+                data=filled.tg_final,
                 output_path=str(output_dir / f"tg_final_{tag}_filled.png"),
-                title=f"DESPOTIC Gas Temperature ({tag} raw)",
+                title=f"DESPOTIC Gas Temperature ({tag} filled)",
+                cbar_label="Tg (K)",
+                use_log=False,
+            )
+
+            plot_table(
+                table=filled,
+                data=filled.int_intensity,
+                output_path=str(output_dir / f"intensity_{tag}_filled.png"),
+                title=f"CO Integrated Intensity ({tag} filled)",
+                cbar_label="Integrated Intensity (erg cm$^{-2}$ s$^{-1}$ sr$^{-1}$)",
+            )
+            plot_table(
+                table=filled,
+                data=filled.lum_per_h,
+                output_path=str(output_dir / f"lum_per_H_{tag}_filled.png"),
+                title=f"Luminosity per H ({tag} filled)",
+                cbar_label="Luminosity per H (erg s$^{-1}$ H$^{-1}$)",
+            )
+            plot_table(
+                table=filled,
+                data=filled.tau,
+                output_path=str(output_dir / f"tau_{tag}_filled.png"),
+                title=f"Line Optical Depth ({tag} filled)",
+                cbar_label="Line Optical Depth",
+                use_log=False,
+            )
+            plot_table(
+                table=filled,
+                data=filled.tau_dust,
+                output_path=str(output_dir / f"tau_dust_{tag}_filled.png"),
+                title=f"Dust Optical Depth ({tag} filled)",
+                cbar_label="Dust Optical Depth",
+                use_log=False,
             )
 
             next_seed = filled

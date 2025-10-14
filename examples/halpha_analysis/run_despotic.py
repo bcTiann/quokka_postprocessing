@@ -18,9 +18,22 @@ from quokka2s.despotic_tables import (
 
 def load_table(path: str) -> DespoticTable:
     data = np.load(path)
+    shape = data["co_int_tb"].shape
+
+    def get_array(key: str) -> np.ndarray:
+        if key in data:
+            return data[key]
+        return np.full(shape, np.nan)
+
     return DespoticTable(
         co_int_tb=data["co_int_tb"],
         tg_final=data["tg_final"],
+        int_intensity=get_array("int_intensity"),
+        lum_per_h=get_array("lum_per_h"),
+        tau=get_array("tau"),
+        tau_dust=get_array("tau_dust"),
+        tex=get_array("tex"),
+        frequency=get_array("frequency"),
         nH_values=data["nH"],
         col_density_values=data["col_density"],
     )
