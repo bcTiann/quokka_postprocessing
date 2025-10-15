@@ -611,6 +611,35 @@ def build_table(
         attempts=attempts,
     )
 
+def make_temperature_interpolator(
+    nH_values: Sequence[float],
+    col_density_values: Sequence[float],
+    tg_table: np.ndarray,
+    *,
+    kx: int = 3,
+    ky: int = 3,
+) -> RectBivariateSpline:
+    """Create a spline interpolator in log-space for Tg data."""
+    nH_values = np.asarray(nH_values)
+    col_density_values = np.asarray(col_density_values)
+    tg_table = np.asarray(tg_table)
+
+    if tg_table.shape != (nH_values.size, col_density_values.size):
+        raise ValueError(
+            "tg_table shape must match the lengths of nH_values and col_density_values"
+        )
+
+    log_nH = np.log10(nH_values)
+    log_col = np.log10(col_density_values)
+    if np.any(~np.isfinite(log_nH)) or np.any(~np.isfinite(log_col)):
+        raise ValueError("nH_values and col_density_values must be positive and finite")
+
+    log_tg = np.log10(tg_table)
+    if np.any(~np.isfinite(log_tg)):
+        raise ValueError("tg_table must contain only positive, finite values")
+
+    return RectBivariateSpline(log_nH, log_col, log_tg, kx=kx, ky=ky)
+
 def refine_table(
     coarse_table: DespoticTable,
     fine_nH_grid: LogGrid,
