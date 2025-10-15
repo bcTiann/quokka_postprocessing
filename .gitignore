@@ -15,6 +15,5 @@ plots/
 .DS_Store
 
 output*/
-*.png/
-*.zip/
+*.png
 *.zip
