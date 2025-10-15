@@ -55,7 +55,7 @@ cell.rad.TradDust   = 0.0        # IR radiation field seen by the dust
 cell.rad.ionRate    = 2.0e-17    # Primary ionization rate
 cell.rad.chi        = 1.0        # ISRF normalized to Solar neighborhood
 
-cell.addEmitter("CO", 8.0e-9)
+cell.addEmitter("c+", 8.0e-9)
 
 
 start_time = time.time()  # 2. 記錄開始時間
