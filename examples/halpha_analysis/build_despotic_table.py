@@ -1,24 +1,30 @@
+import argparse
 import csv
-import sys
+import json
 import logging
+import sys
+import time
 import warnings
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
-from scipy.interpolate import griddata
+from dataclasses import asdict, fields
 from pathlib import Path
 from typing import Sequence
-import time
+
+import matplotlib.pyplot as plt
+import numpy as np
 from despotic.chemistry import NL99, NL99_GC, GOW
-import argparse
+from matplotlib.colors import LogNorm
+from scipy.interpolate import griddata
+
 from quokka2s.despotic_tables import (
+    AttemptRecord,
     DespoticTable,
+    LineLumResult,
     LogGrid,
+    SpeciesLineGrid,
     build_table,
+    fill_missing_values,
     make_temperature_interpolator,
     refine_table,
-    fill_missing_values,
 )
 
 # OUTPUT_DIR = Path("output_tables_GC")
@@ -49,6 +55,18 @@ NETWORK_MAP = {
 }
 
 LOGGER = logging.getLogger(__name__)
+
+DEFAULT_OUTPUT_SPECIES = "CO"
+LINE_FIELD_NAMES = tuple(field.name for field in fields(SpeciesLineGrid))
+NAN_LINE_RESULT = LineLumResult(
+    int_tb=float("nan"),
+    int_intensity=float("nan"),
+    lum_per_h=float("nan"),
+    tau=float("nan"),
+    tau_dust=float("nan"),
+    tex=float("nan"),
+    freq=float("nan"),
+)
 
 
 def configure_logging(log_path: Path) -> None:
@@ -81,6 +99,32 @@ def configure_logging(log_path: Path) -> None:
         warnings.simplefilter("ignore", TqdmExperimentalWarning)
 
 
+def _select_species(table: DespoticTable, species: str = DEFAULT_OUTPUT_SPECIES) -> tuple[str, SpeciesLineGrid]:
+    """Return the requested species grid, falling back to the table default."""
+    if species in table.species_data:
+        return species, table.get_species_grid(species)
+
+    fallback = table.primary_species
+    if species != fallback:
+        LOGGER.warning(
+            "Requested species '%s' unavailable; falling back to '%s'.",
+            species,
+            fallback,
+        )
+    return fallback, table.get_species_grid(fallback)
+
+
+def _line_result_for_species(record: AttemptRecord, species: str = DEFAULT_OUTPUT_SPECIES) -> LineLumResult:
+    """Extract a single-species line result from an AttemptRecord."""
+    mapping = record.line_results
+    if species in mapping:
+        return mapping[species]
+    if mapping:
+        # return the first available species if the requested one is missing
+        return next(iter(mapping.values()))
+    return NAN_LINE_RESULT
+
+
 def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Build DESPOTIC tables with selectable resolution/network/output."
@@ -98,13 +142,17 @@ def parse_cli_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--round", dest="round_digits", type=int, default=None,
                         help="round LogGrid values to this many decimal places (omit for full precision)")
     parser.add_argument(
-        "--n-jobs",
+        "-j",
+        "--jobs",
+        dest="n_jobs",
         type=int,
         default=-1,
-        help="Number of parallel workers (default: -1 uses all available cores).",
+        help="Number of parallel workers (default: -1 uses all cores).",
     )
     parser.add_argument(
+        "--reuse-final",
         "--reuse-final-tg",
+        dest="reuse_final_tg",
         action="store_true",
         help="If set, reuse the final Tg from failed DESPOTIC runs as the next temperature guess.",
     )
@@ -167,19 +215,26 @@ def plot_table(
 
 def save_table(prefix: str, table: DespoticTable) -> None:
     """Persist the lookup table plus axis metadata to an .npz archive."""
-    np.savez_compressed(
-        prefix,
-        co_int_tb=table.co_int_tb,
-        tg_final=table.tg_final,
-        int_intensity=table.int_intensity,
-        lum_per_h=table.lum_per_h,
-        tau=table.tau,
-        tau_dust=table.tau_dust,
-        tex=table.tex,
-        frequency=table.frequency,
-        nH=table.nH_values,
-        col_density=table.col_density_values,
-    )
+    species_names = np.array(table.species, dtype=object)
+    data: dict[str, np.ndarray] = {
+        "species": species_names,
+        "tg_final": table.tg_final,
+        "nH": table.nH_values,
+        "col_density": table.col_density_values,
+        "emitter_abundances": np.asarray(
+            [table.emitter_abundances[sp] for sp in species_names],
+            dtype=float,
+        ),
+    }
+
+    for field in LINE_FIELD_NAMES:
+        stacked = np.stack(
+            [getattr(table.species_data[sp], field) for sp in species_names],
+            axis=0,
+        )
+        data[f"{field}_grid"] = stacked
+
+    np.savez_compressed(prefix, **data)
 
 
 
@@ -232,7 +287,8 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
                            round_digits: int | None = None,
                            n_jobs: int = -1,
                            reuse_failed_tg: bool = False) -> DespoticTable:
-    points = table.co_int_tb.shape[0]
+    _, grid = _select_species(table)
+    points = grid.int_tb.shape[0]
     LOGGER.info("Refining temperature guesses on existing %dx%d grid", points, points)
 
     nH_grid = LogGrid(table.nH_values[0], table.nH_values[-1], points, round_digits=round_digits)
@@ -268,7 +324,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     configure_logging(log_path)
     LOGGER.info("Writing logs to %s", log_path)
     LOGGER.info(
-        "CLI arguments: resolution=%s, network=%s, repeat=%d, fill=%s, round=%s, n_jobs=%d, reuse_final_tg=%s",
+        "CLI arguments: resolution=%s, network=%s, repeat=%d, fill=%s, round=%s, jobs=%d, reuse_final=%s",
         args.resolution,
         args.network,
         args.repeat,
@@ -311,12 +367,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         LOGGER.info("Raw %s table saved to %s", tag, raw_prefix.with_suffix(".npz"))
         
         # Plot Table
+        species_name, species_grid = _select_species(raw_table)
+        species_token = species_name.replace("+", "plus").lower()
         plot_table(
             table=raw_table,
-            data=raw_table.co_int_tb,
-            output_path=str(output_dir / f"co_int_TB_{tag}_raw.png"),
-            title=f"DESPOTIC Lookup Table ({tag} raw)",
-            cbar_label="CO Integrated Brightness Temp (K km/s)",
+            data=species_grid.int_tb,
+            output_path=str(output_dir / f"{species_token}_int_TB_{tag}_raw.png"),
+            title=f"{species_name} Integrated Brightness ({tag} raw)",
+            cbar_label=f"{species_name} Integrated Brightness Temp (K km/s)",
         )
         plot_table(
             table=raw_table,
@@ -327,30 +385,30 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         plot_table(
             table=raw_table,
-            data=raw_table.int_intensity,
-            output_path=str(output_dir / f"intensity_{tag}_raw.png"),
-            title=f"CO Integrated Intensity ({tag} raw)",
-            cbar_label="Integrated Intensity (erg cm$^{-2}$ s$^{-1}$ sr$^{-1}$)",
+            data=species_grid.int_intensity,
+            output_path=str(output_dir / f"{species_token}_intensity_{tag}_raw.png"),
+            title=f"{species_name} Integrated Intensity ({tag} raw)",
+            cbar_label=f"{species_name} Integrated Intensity (erg cm$^{{-2}}$ s$^{{-1}}$ sr$^{{-1}}$)",
         )
         plot_table(
             table=raw_table,
-            data=raw_table.lum_per_h,
-            output_path=str(output_dir / f"lum_per_H_{tag}_raw.png"),
-            title=f"Luminosity per H ({tag} raw)",
-            cbar_label="Luminosity per H (erg s$^{-1}$ H$^{-1}$)",
+            data=species_grid.lum_per_h,
+            output_path=str(output_dir / f"{species_token}_lum_per_H_{tag}_raw.png"),
+            title=f"{species_name} Luminosity per H ({tag} raw)",
+            cbar_label=f"{species_name} Luminosity per H (erg s$^{{-1}}$ H$^{{-1}}$)",
         )
         plot_table(
             table=raw_table,
-            data=raw_table.tau,
-            output_path=str(output_dir / f"tau_{tag}_raw.png"),
-            title=f"Line Optical Depth ({tag} raw)",
-            cbar_label="Line Optical Depth",
+            data=species_grid.tau,
+            output_path=str(output_dir / f"{species_token}_tau_{tag}_raw.png"),
+            title=f"{species_name} Line Optical Depth ({tag} raw)",
+            cbar_label=f"{species_name} Line Optical Depth",
             use_log=False,
         )
         plot_table(
             table=raw_table,
-            data=raw_table.tau_dust,
-            output_path=str(output_dir / f"tau_dust_{tag}_raw.png"),
+            data=species_grid.tau_dust,
+            output_path=str(output_dir / f"{species_token}_tau_dust_{tag}_raw.png"),
             title=f"Dust Optical Depth ({tag} raw)",
             cbar_label="Dust Optical Depth",
             use_log=False,
@@ -371,6 +429,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "attempt_type",
                     "converged",
                     "repeat_equilibrium",
+                    "species",
                     "co_int_TB",
                     "int_intensity",
                     "lum_per_H",
@@ -381,26 +440,28 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "error_message",
                 ])
                 for record in raw_table.attempts:
+                    line_result = _line_result_for_species(record, species_name)
                     writer.writerow([
-                    record.row_idx,
-                    record.col_idx,
-                    record.nH,
-                    record.colDen,
-                    record.tg_guess,
-                    record.final_Tg,
-                    record.attempt_number,
-                    record.attempt_type,
-                    record.converged,
-                    record.repeat_equilibrium,
-                    record.co_int_TB,
-                    record.int_intensity,
-                    record.lum_per_h,
-                    record.tau,
-                    record.tau_dust,
-                    record.tex,
-                    record.frequency,
-                    record.error_message or "",
-                ])
+                        record.row_idx,
+                        record.col_idx,
+                        record.nH,
+                        record.colDen,
+                        record.tg_guess,
+                        record.final_Tg,
+                        record.attempt_number,
+                        record.attempt_type,
+                        record.converged,
+                        record.repeat_equilibrium,
+                        species_name,
+                        line_result.int_tb,
+                        line_result.int_intensity,
+                        line_result.lum_per_h,
+                        line_result.tau,
+                        line_result.tau_dust,
+                        line_result.tex,
+                        line_result.freq,
+                        record.error_message or "",
+                    ])
             LOGGER.info("%d attempts logged to %s", len(raw_table.attempts), attempts_path)
         else:
             LOGGER.info("No DESPOTIC attempts recorded for this table.")
@@ -439,21 +500,20 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
         if fill_requested:
-
             # Fill table
             filled = fill_missing_values(raw_table)
             filled_prefix = output_dir / f"table_{tag}_filled"
             save_table(filled_prefix, filled)
-            
-            # Plot Table
-            filled_plot_path = output_dir / f"co_int_TB_{tag}_filled.png"
 
+            # Plot Table
+            filled_species_name, filled_grid = _select_species(filled)
+            filled_species_token = filled_species_name.replace("+", "plus").lower()
             plot_table(
                 table=filled,
-                data=filled.co_int_tb,
-                output_path=str(filled_plot_path),
-                title=f"DESPOTIC Lookup Table ({tag} filled)",
-                cbar_label="CO Integrated Brightness Temp (K km/s)",
+                data=filled_grid.int_tb,
+                output_path=str(output_dir / f"{filled_species_token}_int_TB_{tag}_filled.png"),
+                title=f"{filled_species_name} Integrated Brightness ({tag} filled)",
+                cbar_label=f"{filled_species_name} Integrated Brightness Temp (K km/s)",
             )
 
             plot_table(
@@ -467,34 +527,35 @@ def main(argv: Sequence[str] | None = None) -> None:
 
             plot_table(
                 table=filled,
-                data=filled.int_intensity,
-                output_path=str(output_dir / f"intensity_{tag}_filled.png"),
-                title=f"CO Integrated Intensity ({tag} filled)",
-                cbar_label="Integrated Intensity (erg cm$^{-2}$ s$^{-1}$ sr$^{-1}$)",
+                data=filled_grid.int_intensity,
+                output_path=str(output_dir / f"{filled_species_token}_intensity_{tag}_filled.png"),
+                title=f"{filled_species_name} Integrated Intensity ({tag} filled)",
+                cbar_label=f"{filled_species_name} Integrated Intensity (erg cm${{-2}}$ s${{-1}}$ sr${{-1}}$)",
             )
             plot_table(
                 table=filled,
-                data=filled.lum_per_h,
-                output_path=str(output_dir / f"lum_per_H_{tag}_filled.png"),
-                title=f"Luminosity per H ({tag} filled)",
-                cbar_label="Luminosity per H (erg s$^{-1}$ H$^{-1}$)",
+                data=filled_grid.lum_per_h,
+                output_path=str(output_dir / f"{filled_species_token}_lum_per_H_{tag}_filled.png"),
+                title=f"{filled_species_name} Luminosity per H ({tag} filled)",
+                cbar_label=f"{filled_species_name} Luminosity per H (erg s${{-1}}$ H${{-1}}$)",
             )
             plot_table(
                 table=filled,
-                data=filled.tau,
-                output_path=str(output_dir / f"tau_{tag}_filled.png"),
-                title=f"Line Optical Depth ({tag} filled)",
-                cbar_label="Line Optical Depth",
+                data=filled_grid.tau,
+                output_path=str(output_dir / f"{filled_species_token}_tau_{tag}_filled.png"),
+                title=f"{filled_species_name} Line Optical Depth ({tag} filled)",
+                cbar_label=f"{filled_species_name} Line Optical Depth",
                 use_log=False,
             )
             plot_table(
                 table=filled,
-                data=filled.tau_dust,
-                output_path=str(output_dir / f"tau_dust_{tag}_filled.png"),
+                data=filled_grid.tau_dust,
+                output_path=str(output_dir / f"{filled_species_token}_tau_dust_{tag}_filled.png"),
                 title=f"Dust Optical Depth ({tag} filled)",
                 cbar_label="Dust Optical Depth",
                 use_log=False,
             )
+
 
             next_seed = filled
 

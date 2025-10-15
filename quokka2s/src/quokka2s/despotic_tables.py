@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple, Mapping
+from types import MappingProxyType
 import warnings
 
 import contextlib
@@ -50,6 +51,32 @@ class LogGrid:
         return values
 
 @dataclass(frozen=True)
+class LineLumResult:
+    """Single-species line luminosity output from DESPOTIC."""
+
+    int_tb: float
+    int_intensity: float
+    lum_per_h: float
+    tau: float
+    tau_dust: float
+    tex: float
+    freq: float
+
+
+@dataclass(frozen=True)
+class SpeciesLineGrid:
+    """Grid of line luminosity outputs for an emitting species."""
+
+    int_tb: np.ndarray
+    int_intensity: np.ndarray
+    lum_per_h: np.ndarray
+    tau: np.ndarray
+    tau_dust: np.ndarray
+    tex: np.ndarray
+    freq: np.ndarray
+
+
+@dataclass(frozen=True)
 class AttemptRecord:
     row_idx: int | None
     col_idx: int | None
@@ -58,43 +85,172 @@ class AttemptRecord:
     tg_guess: float
     final_Tg: float
     attempt_number: int
-    attempt_type: str  # "successful" / "single_attempt" / "co_int_below_threshold" / "exception" / "all_guesses_failed"
+    attempt_type: str  # "successful" / "single_attempt" / "exception" / "all_guesses_failed"
     converged: bool
     repeat_equilibrium: int
-    co_int_TB: float
-    int_intensity: float
-    lum_per_h: float
-    tau: float
-    tau_dust: float
-    tex: float
-    frequency: float
+    line_results: Mapping[str, LineLumResult] = field(default_factory=dict)
     error_message: str | None = None
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "line_results", MappingProxyType(dict(self.line_results)))
 
+    def _line_result(self, species: str = "CO") -> LineLumResult | None:
+        if species in self.line_results:
+            return self.line_results[species]
+        if self.line_results:
+            return next(iter(self.line_results.values()))
+        return None
+
+    @property
+    def co_int_TB(self) -> float:
+        result = self._line_result()
+        return result.int_tb if result is not None else float("nan")
+
+    @property
+    def int_intensity(self) -> float:
+        result = self._line_result()
+        return result.int_intensity if result is not None else float("nan")
+
+    @property
+    def lum_per_h(self) -> float:
+        result = self._line_result()
+        return result.lum_per_h if result is not None else float("nan")
+
+    @property
+    def tau(self) -> float:
+        result = self._line_result()
+        return result.tau if result is not None else float("nan")
+
+    @property
+    def tau_dust(self) -> float:
+        result = self._line_result()
+        return result.tau_dust if result is not None else float("nan")
+
+    @property
+    def tex(self) -> float:
+        result = self._line_result()
+        return result.tex if result is not None else float("nan")
+
+    @property
+    def frequency(self) -> float:
+        result = self._line_result()
+        return result.freq if result is not None else float("nan")
 
 
 @dataclass(frozen=True)
 class DespoticTable:
     """Container for DESPOTIC lookup table outputs."""
 
-    co_int_tb: np.ndarray
+    species_data: Mapping[str, SpeciesLineGrid]
     tg_final: np.ndarray
-    int_intensity: np.ndarray
-    lum_per_h: np.ndarray
-    tau: np.ndarray
-    tau_dust: np.ndarray
-    tex: np.ndarray
-    frequency: np.ndarray
     nH_values: np.ndarray
     col_density_values: np.ndarray
+    emitter_abundances: Mapping[str, float]
     attempts: Tuple[AttemptRecord, ...] = field(default_factory=tuple)
 
-    def as_tuple(self) -> Tuple[np.ndarray, np.ndarray]:
-        return self.co_int_tb, self.tg_final
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "species_data", MappingProxyType(dict(self.species_data)))
+        object.__setattr__(self, "emitter_abundances", MappingProxyType(dict(self.emitter_abundances)))
+
+    @property
+    def species(self) -> Tuple[str, ...]:
+        return tuple(self.species_data.keys())
+
+    @property
+    def primary_species(self) -> str:
+        if not self.species_data:
+            raise ValueError("DespoticTable contains no species data")
+        return next(iter(self.species_data))
+
+    def _compat_species_grid(self, species: str = "CO") -> SpeciesLineGrid:
+        if species in self.species_data:
+            return self.species_data[species]
+        if not self.species_data:
+            raise ValueError("DespoticTable contains no species data")
+        return next(iter(self.species_data.values()))
+
+    def get_species_grid(self, species: str) -> SpeciesLineGrid:
+        return self.species_data[species]
+
+    @property
+    def co_int_tb(self) -> np.ndarray:
+        return self._compat_species_grid().int_tb
+
+    @property
+    def int_intensity(self) -> np.ndarray:
+        return self._compat_species_grid().int_intensity
+
+    @property
+    def lum_per_h(self) -> np.ndarray:
+        return self._compat_species_grid().lum_per_h
+
+    @property
+    def tau(self) -> np.ndarray:
+        return self._compat_species_grid().tau
+
+    @property
+    def tau_dust(self) -> np.ndarray:
+        return self._compat_species_grid().tau_dust
+
+    @property
+    def tex(self) -> np.ndarray:
+        return self._compat_species_grid().tex
+
+    @property
+    def frequency(self) -> np.ndarray:
+        return self._compat_species_grid().freq
 
 
-DEFAULT_EMITTER_ABUNDANCE = 8.0e-9
+CO_ABUNDANCE = 8.0e-9
+CP_ABUNDANCE = 1.1e-4
+DEFAULT_EMITTER_ABUNDANCES: Mapping[str, float] = MappingProxyType(
+    {"CO": CO_ABUNDANCE, "C+": CP_ABUNDANCE}
+)
+
 CO_INT_THRESHOLD = 1.0e-8
+
+LINE_RESULT_FIELDS: Tuple[str, ...] = (
+    "int_tb",
+    "int_intensity",
+    "lum_per_h",
+    "tau",
+    "tau_dust",
+    "tex",
+    "freq",
+)
+
+_NAN_LINE_RESULT = LineLumResult(
+    int_tb=float("nan"),
+    int_intensity=float("nan"),
+    lum_per_h=float("nan"),
+    tau=float("nan"),
+    tau_dust=float("nan"),
+    tex=float("nan"),
+    freq=float("nan"),
+)
+
+
+def _nan_line_result() -> LineLumResult:
+    return _NAN_LINE_RESULT
+
+
+def _empty_line_results(species: Sequence[str]) -> dict[str, LineLumResult]:
+    return {sp: _nan_line_result() for sp in species}
+
+
+def _extract_line_result(transitions: Sequence[Mapping[str, float]]) -> LineLumResult:
+    if not transitions:
+        return _nan_line_result()
+    entry = transitions[0]
+    return LineLumResult(
+        int_tb=float(entry.get("intTB", float("nan"))),
+        int_intensity=float(entry.get("intIntensity", float("nan"))),
+        lum_per_h=float(entry.get("lumPerH", float("nan"))),
+        tau=float(entry.get("tau", float("nan"))),
+        tau_dust=float(entry.get("tauDust", float("nan"))),
+        tex=float(entry.get("Tex", float("nan"))),
+        freq=float(entry.get("freq", float("nan"))),
+    )
 
 
 def _log_despotic_stdout(buffer: io.StringIO) -> None:
@@ -116,7 +272,7 @@ def calculate_single_despotic_point(
     initial_Tg_guesses: Sequence[float],
     *,
     log_failures: bool = False,
-    emitter_abundance: float = DEFAULT_EMITTER_ABUNDANCE,
+    emitter_abundances: Mapping[str, float] = DEFAULT_EMITTER_ABUNDANCES,
     repeat_equilibrium: int = 0,
     chem_network=NL99,
     row_idx: int | None = None,
@@ -124,25 +280,20 @@ def calculate_single_despotic_point(
     attempt_log: list[AttemptRecord] | None = None,
     reuse_failed_tg: bool = False,
     reuse_max_insertions: int = 3,
-) -> Tuple[float, float, float, float, float, float, float, float]:
+) -> Tuple[Mapping[str, LineLumResult], float]:
     """Run DESPOTIC for one (nH, column density) pair.
 
     Returns
     -------
-    Tuple
-        (co_int_TB, final_Tg, intIntensity, lumPerH, tau, tauDust, Tex, freq)
-        Values are ``nan`` if all guesses fail.
+    Tuple[Mapping[str, LineLumResult], float]
+        Mapping from species name to line luminosity metrics together with
+        the final gas temperature. Values are ``nan`` if all guesses fail.
     """
+    species_order = tuple(emitter_abundances.keys())
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
-    last_co_int = float("nan")
-    last_int_intensity = float("nan")
-    last_lum_per_h = float("nan")
-    last_tau = float("nan")
-    last_tau_dust = float("nan")
-    last_tex = float("nan")
-    last_freq = float("nan")
+    last_line_results: dict[str, LineLumResult] = _empty_line_results(species_order)
 
     pending_guesses: list[float] = [float(g) for g in initial_Tg_guesses]
     seen_guesses: list[float] = []
@@ -196,10 +347,11 @@ def calculate_single_despotic_point(
             cell.rad.TradDust = 0.0
             cell.rad.ionRate = 2.0e-17
             cell.rad.chi = 1.0
-            
+
             cell.comp.computeDerived(cell.nH)
 
-            cell.addEmitter("CO", emitter_abundance)
+            for species, abundance in emitter_abundances.items():
+                cell.addEmitter(species, abundance)
 
             stdout_buffer = io.StringIO()
             with contextlib.redirect_stdout(stdout_buffer):
@@ -209,13 +361,8 @@ def calculate_single_despotic_point(
             if not converge:
                 final_tg = float(cell.Tg)
                 last_final_tg = final_tg
-                last_co_int = float("nan")
-                last_int_intensity = float("nan")
-                last_lum_per_h = float("nan")
-                last_tau = float("nan")
-                last_tau_dust = float("nan")
-                last_tex = float("nan")
-                last_freq = float("nan")
+                line_results = _empty_line_results(species_order)
+                last_line_results = dict(line_results)
                 if attempt_log is not None:
                     attempt_log.append(
                         AttemptRecord(
@@ -229,59 +376,23 @@ def calculate_single_despotic_point(
                             attempt_type="single_attempt",
                             converged=False,
                             repeat_equilibrium=repeat_equilibrium,
-                            co_int_TB=float("nan"),
-                            int_intensity=float("nan"),
-                            lum_per_h=float("nan"),
-                            tau=float("nan"),
-                            tau_dust=float("nan"),
-                            tex=float("nan"),
-                            frequency=float("nan"),
+                            line_results=line_results,
                         )
                     )
                 _enqueue_retry(final_tg)
                 continue
 
-            stdout_buffer = io.StringIO()
-            with contextlib.redirect_stdout(stdout_buffer):
-                lines = cell.lineLum("CO")
-            _log_despotic_stdout(stdout_buffer)
-            co_int_TB = lines[0]["intTB"]
-            intensity_with_dust = lines[0]["intIntensity"]
-            lumPerH = lines[0]["lumPerH"]
-            tau = lines[0]["tau"]
-            tau_dust = lines[0]["tauDust"]
-            tex = lines[0]["Tex"]
-            freq = lines[0]["freq"]
-
+            line_results: dict[str, LineLumResult] = {}
+            for species in species_order:
+                stdout_buffer = io.StringIO()
+                with contextlib.redirect_stdout(stdout_buffer):
+                    transitions = cell.lineLum(species)
+                _log_despotic_stdout(stdout_buffer)
+                line_results[species] = _extract_line_result(transitions)
 
             final_Tg = float(cell.Tg)
             last_final_tg = final_Tg
-            last_co_int = co_int_TB
-            last_int_intensity = intensity_with_dust
-            last_lum_per_h = lumPerH
-            last_tau = tau
-            last_tau_dust = tau_dust
-            last_tex = tex
-            last_freq = freq
-
-            # if (not np.isfinite(co_int_TB)) or (co_int_TB < CO_INT_THRESHOLD):
-            #     if attempt_log is not None:
-            #         attempt_log.append(
-            #             AttemptRecord(
-            #                 row_idx=row_idx,
-            #                 col_idx=col_idx,
-            #                 nH=cell.nH,
-            #                 colDen=cell.colDen,
-            #                 tg_guess=guess,
-            #                 final_Tg=final_Tg,
-            #                 attempt_number=attempt_number,
-            #                 attempt_type="co_int_below_threshold",
-            #                 converged=False,
-            #                 repeat_equilibrium=repeat_equilibrium,
-            #                 co_int_TB=co_int_TB,
-            #             )
-            #         )
-            #     continue
+            last_line_results = dict(line_results)
 
             if attempt_log is not None:
                 attempt_log.append(
@@ -296,38 +407,18 @@ def calculate_single_despotic_point(
                         attempt_type="successful",
                         converged=True,
                         repeat_equilibrium=repeat_equilibrium,
-                        co_int_TB=co_int_TB,
-                        int_intensity=intensity_with_dust,
-                        lum_per_h=lumPerH,
-                        tau=tau,
-                        tau_dust=tau_dust,
-                        tex=tex,
-                        frequency=freq,
+                        line_results=line_results,
                     )
                 )
-            return (
-                co_int_TB,
-                final_Tg,
-                intensity_with_dust,
-                lumPerH,
-                tau,
-                tau_dust,
-                tex,
-                freq,
-            )
+            return MappingProxyType(dict(line_results)), final_Tg
 
         except Exception as exc:  # pragma: no cover - DESPOTIC exceptions vary
             fallback_cell = locals().get("cell")
             fallback_tg = float(getattr(fallback_cell, "Tg", float("nan"))) if fallback_cell is not None else float("nan")
 
             last_final_tg = fallback_tg
-            last_co_int = float("nan")
-            last_int_intensity = float("nan")
-            last_lum_per_h = float("nan")
-            last_tau = float("nan")
-            last_tau_dust = float("nan")
-            last_tex = float("nan")
-            last_freq = float("nan")
+            line_results = _empty_line_results(species_order)
+            last_line_results = dict(line_results)
             if attempt_log is not None:
                 attempt_log.append(
                     AttemptRecord(
@@ -341,13 +432,7 @@ def calculate_single_despotic_point(
                         attempt_type="exception",
                         converged=False,
                         repeat_equilibrium=repeat_equilibrium,
-                        co_int_TB=float("nan"),
-                        int_intensity=float("nan"),
-                        lum_per_h=float("nan"),
-                        tau=float("nan"),
-                        tau_dust=float("nan"),
-                        tex=float("nan"),
-                        frequency=float("nan"),
+                        line_results=line_results,
                         error_message=str(exc),
                     )
                 )
@@ -372,26 +457,10 @@ def calculate_single_despotic_point(
                 attempt_type="all_guesses_failed",
                 converged=False,
                 repeat_equilibrium=repeat_equilibrium,
-                co_int_TB=last_co_int,
-                int_intensity=last_int_intensity,
-                lum_per_h=last_lum_per_h,
-                tau=last_tau,
-                tau_dust=last_tau_dust,
-                tex=last_tex,
-                frequency=last_freq,
+                line_results=last_line_results,
             )
         )
-    return (
-        float("nan"),
-        float("nan"),
-        float("nan"),
-        float("nan"),
-        float("nan"),
-        float("nan"),
-        float("nan"),
-        float("nan"),
-    )
-
+    return MappingProxyType(dict(last_line_results)), float("nan")
 
 def _compute_row(
     nH: float,
@@ -400,38 +469,29 @@ def _compute_row(
     interpolator: Optional[RectBivariateSpline],
     *,
     chem_network=NL99,
+    emitter_abundances: Mapping[str, float],
     row_logs: list[AttemptRecord] | None = None,
     repeat_equilibrium: int = 0,
     log_failures: bool = False,
     row_idx: int,
     reuse_failed_tg: bool = False,
     reuse_max_insertions: int = 5,
-    ) -> Tuple[
-        List[float],
-        List[float],
-        List[float],
-        List[float],
-        List[float],
-        List[float],
-        List[float],
-        List[float],
-        list[AttemptRecord],
-    ]:
-
-    co_row: List[float] = []
+) -> Tuple[
+    List[float],
+    dict[str, dict[str, List[float]]],
+    list[AttemptRecord],
+]:
+    species_order = tuple(emitter_abundances.keys())
+    species_buffers: dict[str, dict[str, List[float]]] = {
+        species: {field: [] for field in LINE_RESULT_FIELDS}
+        for species in species_order
+    }
     tg_row: List[float] = []
-    intensity_row: List[float] = []
-    lum_row: List[float] = []
-    tau_row: List[float] = []
-    tau_dust_row: List[float] = []
-    tex_row: List[float] = []
-    freq_row: List[float] = []
 
     if row_logs is None:
-        row_logs = []  
+        row_logs = []
 
     for col_idx, colDen in enumerate(col_den_points):
-
         dynamic_guesses: Sequence[float] = guess_list
         if interpolator is not None:
             try:
@@ -446,50 +506,29 @@ def _compute_row(
                         RuntimeWarning,
                     )
 
-        (
-            co_val,
-            tg_val,
-            intensity_val,
-            lum_val,
-            tau_val,
-            tau_dust_val,
-            tex_val,
-        freq_val,
-    ) = calculate_single_despotic_point(
-        nH_val=nH,
-        colDen_val=colDen,
-        initial_Tg_guesses=dynamic_guesses,
-        log_failures=log_failures,
-        repeat_equilibrium=repeat_equilibrium,
-        chem_network=chem_network,
-        row_idx=row_idx,
-        col_idx=col_idx,
-        attempt_log=row_logs,
-        reuse_failed_tg=reuse_failed_tg,
-        reuse_max_insertions=reuse_max_insertions,
-    )
+        line_results_map, tg_val = calculate_single_despotic_point(
+            nH_val=nH,
+            colDen_val=colDen,
+            initial_Tg_guesses=dynamic_guesses,
+            log_failures=log_failures,
+            emitter_abundances=emitter_abundances,
+            repeat_equilibrium=repeat_equilibrium,
+            chem_network=chem_network,
+            row_idx=row_idx,
+            col_idx=col_idx,
+            attempt_log=row_logs,
+            reuse_failed_tg=reuse_failed_tg,
+            reuse_max_insertions=reuse_max_insertions,
+        )
 
-        co_row.append(co_val)
         tg_row.append(tg_val)
-        intensity_row.append(intensity_val)
-        lum_row.append(lum_val)
-        tau_row.append(tau_val)
-        tau_dust_row.append(tau_dust_val)
-        tex_row.append(tex_val)
-        freq_row.append(freq_val)
+        line_results_dict = dict(line_results_map)
+        for species in species_order:
+            result = line_results_dict.get(species, _nan_line_result())
+            for field in LINE_RESULT_FIELDS:
+                species_buffers[species][field].append(getattr(result, field))
 
-    return (
-        co_row,
-        tg_row,
-        intensity_row,
-        lum_row,
-        tau_row,
-        tau_dust_row,
-        tex_row,
-        freq_row,
-        row_logs,
-    )
-
+    return tg_row, species_buffers, row_logs
 
 def build_table(
     nH_grid: LogGrid,
@@ -497,6 +536,7 @@ def build_table(
     tg_guesses: Sequence[float],
     *,
     chem_network=NL99,
+    emitter_abundances: Mapping[str, float] = DEFAULT_EMITTER_ABUNDANCES,
     interpolator: Optional[RectBivariateSpline] = None,
     n_jobs: int = -1,
     repeat_equilibrium: int = 0,
@@ -508,7 +548,7 @@ def build_table(
     """Build a DESPOTIC lookup table for a pair of logarithmic grids."""
     nH_points = nH_grid.sample()
     col_den_points = col_den_grid.sample()
-
+    species_order = tuple(emitter_abundances.keys())
 
     progress_bar = None
     progress_manager = contextlib.nullcontext()
@@ -523,8 +563,9 @@ def build_table(
                 col_den_points,
                 tg_guesses,
                 interpolator,
-                repeat_equilibrium=repeat_equilibrium,
                 chem_network=chem_network,
+                emitter_abundances=emitter_abundances,
+                repeat_equilibrium=repeat_equilibrium,
                 log_failures=log_failures,
                 row_idx=row_idx,
                 reuse_failed_tg=reuse_failed_tg,
@@ -535,43 +576,39 @@ def build_table(
 
     if progress_bar is not None:
         progress_bar.close()
-    
 
-    (
-        co_rows,
-        tg_rows,
-        intensity_rows,
-        lum_rows,
-        tau_rows,
-        tau_dust_rows,
-        tex_rows,
-        freq_rows,
-        attempt_lists,
-    ) = zip(*results)
+    tg_rows, species_rows_list, attempt_lists = zip(*results)
+    tg_final = np.asarray(tg_rows, dtype=float)
 
-    co_int_tb = np.array(co_rows)
-    tg_final = np.array(tg_rows)
-    int_intensity = np.array(intensity_rows)
-    lum_per_h = np.array(lum_rows)
-    tau = np.array(tau_rows)
-    tau_dust = np.array(tau_dust_rows)
-    tex = np.array(tex_rows)
-    freq = np.array(freq_rows)
+    species_data: dict[str, SpeciesLineGrid] = {}
+    for species in species_order:
+        field_arrays: dict[str, np.ndarray] = {}
+        for field in LINE_RESULT_FIELDS:
+            field_arrays[field] = np.asarray(
+                [row_data[species][field] for row_data in species_rows_list],
+                dtype=float,
+            )
+        species_data[species] = SpeciesLineGrid(
+            int_tb=field_arrays["int_tb"],
+            int_intensity=field_arrays["int_intensity"],
+            lum_per_h=field_arrays["lum_per_h"],
+            tau=field_arrays["tau"],
+            tau_dust=field_arrays["tau_dust"],
+            tex=field_arrays["tex"],
+            freq=field_arrays["freq"],
+        )
+
     from itertools import chain
+
     attempts = tuple(chain.from_iterable(attempt_lists))
 
     return DespoticTable(
-        co_int_tb=co_int_tb,
+        species_data=species_data,
         tg_final=tg_final,
-        int_intensity=int_intensity,
-        lum_per_h=lum_per_h,
-        tau=tau,
-        tau_dust=tau_dust,
-        tex=tex,
-        frequency=freq,
         nH_values=nH_points,
         col_density_values=col_den_points,
-        attempts=attempts
+        emitter_abundances=emitter_abundances,
+        attempts=attempts,
     )
 
 def refine_table(
@@ -580,6 +617,8 @@ def refine_table(
     fine_col_den_grid: LogGrid,
     tg_guesses: Sequence[float],
     *,
+    chem_network=NL99,
+    emitter_abundances: Mapping[str, float] | None = None,
     interpolator: Optional[RectBivariateSpline] = None,
     n_jobs: int = -1,
     repeat_equilibrium: int = 0,
@@ -589,6 +628,9 @@ def refine_table(
     reuse_max_insertions: int = 3,
 ) -> DespoticTable:
     """Use a coarse table to guide computation on a finer grid."""
+    if emitter_abundances is None:
+        emitter_abundances = coarse_table.emitter_abundances
+
     if interpolator is None:
         interpolator = make_temperature_interpolator(
             coarse_table.nH_values,
@@ -600,6 +642,8 @@ def refine_table(
         fine_nH_grid,
         fine_col_den_grid,
         tg_guesses,
+        chem_network=chem_network,
+        emitter_abundances=emitter_abundances,
         interpolator=interpolator,
         n_jobs=n_jobs,
         repeat_equilibrium=repeat_equilibrium,
@@ -609,74 +653,14 @@ def refine_table(
         reuse_max_insertions=reuse_max_insertions,
     )
 
-
-def make_temperature_interpolator(
-    nH_values: Sequence[float],
-    col_density_values: Sequence[float],
-    tg_table: np.ndarray,
-    *,
-    kx: int = 3,
-    ky: int = 3,
-) -> RectBivariateSpline:
-    """Create a spline interpolator in log-space for Tg data."""
-    nH_values = np.asarray(nH_values)
-    col_density_values = np.asarray(col_density_values)
-    tg_table = np.asarray(tg_table)
-
-    if tg_table.shape != (nH_values.size, col_density_values.size):
-        raise ValueError(
-            "tg_table shape must match the lengths of nH_values and col_density_values"
-        )
-
-    log_nH = np.log10(nH_values)
-    log_col = np.log10(col_density_values)
-    log_tg = np.log10(tg_table)
-
-    return RectBivariateSpline(log_nH, log_col, log_tg, kx=kx, ky=ky)
-
-
-
-# def fill_missing_co_values(table: DespoticTable) -> DespoticTable:
-#     """Return a copy of the table with non-finite CO entries filled by interpolation."""
-#     co = table.co_int_tb
-#     mask = ~np.isfinite(co)
-#     if not mask.any():
-#         return table
-
-#     co_filled = co.copy()
-#     log_nH = np.log10(table.nH_values)
-#     log_col = np.log10(table.col_density_values)
-#     log_col_grid, log_nH_grid = np.meshgrid(log_col, log_nH, indexing="xy")
-
-#     points = np.column_stack((log_nH_grid[~mask], log_col_grid[~mask]))
-#     values = co[~mask]
-#     targets = np.column_stack((log_nH_grid[mask], log_col_grid[mask]))
-
-#     filled = griddata(points, values, targets, method="linear")
-#     if np.isnan(filled).any():
-#         fallback = griddata(points, values, targets, method="nearest")
-#         filled = np.where(np.isnan(filled), fallback, filled)
-
-#     co_filled[mask] = filled
-#     return DespoticTable(
-#         co_int_tb=co_filled,
-#         tg_final=table.tg_final,
-#         nH_values=table.nH_values,
-#         col_density_values=table.col_density_values,
-#         failures=table.failures,
-#     )
-
-
 def fill_missing_values(table: DespoticTable) -> DespoticTable:
-    
     log_nH = np.log10(table.nH_values)
     log_col = np.log10(table.col_density_values)
     log_col_grid, log_nH_grid = np.meshgrid(log_col, log_nH, indexing="xy")
 
     def _fill_grid(values: np.ndarray, *, log_space: bool) -> np.ndarray:
         grid = values.copy()
-        mask = ~np.isfinite(grid) # ~ all valid grid == all invalid grid == mask
-        # ~mask == all valid grid
+        mask = ~np.isfinite(grid)
         if log_space:
             mask |= grid <= 0
         if not mask.any():
@@ -687,10 +671,10 @@ def fill_missing_values(table: DespoticTable) -> DespoticTable:
             safe[mask] = 1.0
             work = np.log10(safe)
         else:
-            work = grid # work == all grid values     work[~mask] == all valid grid values
- 
-        points = np.column_stack((log_nH_grid[~mask], log_col_grid[~mask])) # all valid grid 2D coordinates
-        targets = np.column_stack((log_nH_grid[mask], log_col_grid[mask])) # all invalid grid 2D coordinates
+            work = grid
+
+        points = np.column_stack((log_nH_grid[~mask], log_col_grid[~mask]))
+        targets = np.column_stack((log_nH_grid[mask], log_col_grid[mask]))
         filled = griddata(points, work[~mask], targets, method="linear")
 
         if np.isnan(filled).any():
@@ -700,30 +684,29 @@ def fill_missing_values(table: DespoticTable) -> DespoticTable:
         result = work.copy()
         result[mask] = filled
         return np.power(10.0, result) if log_space else result
-    
-    co_filled = _fill_grid(table.co_int_tb, log_space=False)
+
+    species_filled: dict[str, SpeciesLineGrid] = {}
+    for species, grid in table.species_data.items():
+        species_filled[species] = SpeciesLineGrid(
+            int_tb=_fill_grid(grid.int_tb, log_space=False),
+            int_intensity=_fill_grid(grid.int_intensity, log_space=True),
+            lum_per_h=_fill_grid(grid.lum_per_h, log_space=True),
+            tau=_fill_grid(grid.tau, log_space=False),
+            tau_dust=_fill_grid(grid.tau_dust, log_space=False),
+            tex=_fill_grid(grid.tex, log_space=False),
+            freq=np.array(grid.freq, copy=True),
+        )
+
     tg_filled = _fill_grid(table.tg_final, log_space=True)
-    intensity_filled = _fill_grid(table.int_intensity, log_space=True)
-    lum_filled = _fill_grid(table.lum_per_h, log_space=True)
-    tau_filled = _fill_grid(table.tau, log_space=False)
-    tau_dust_filled = _fill_grid(table.tau_dust, log_space=False)
-    tex_filled = _fill_grid(table.tex, log_space=False)
-    freq_filled = table.frequency  # frequency is fixed by transition; assume complete
 
     return DespoticTable(
-        co_int_tb=co_filled,
+        species_data=species_filled,
         tg_final=tg_filled,
-        int_intensity=intensity_filled,
-        lum_per_h=lum_filled,
-        tau=tau_filled,
-        tau_dust=tau_dust_filled,
-        tex=tex_filled,
-        frequency=freq_filled,
         nH_values=table.nH_values,
         col_density_values=table.col_density_values,
+        emitter_abundances=table.emitter_abundances,
         attempts=table.attempts,
     )
-
 
 def compute_average(
     components: Sequence[np.ndarray],
@@ -777,6 +760,8 @@ def compute_average(
 __all__ = [
     "LogGrid",
     "DespoticTable",
+    "LineLumResult",
+    "SpeciesLineGrid",
     "calculate_single_despotic_point",
     "build_table",
     "make_temperature_interpolator",

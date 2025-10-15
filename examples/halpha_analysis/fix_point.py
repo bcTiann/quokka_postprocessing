@@ -19,10 +19,11 @@ from tqdm_joblib import tqdm_joblib
 from quokka2s.despotic_tables import (
     AttemptRecord,
     DespoticTable,
+    SpeciesLineGrid,
     calculate_single_despotic_point,
 )
 from despotic.chemistry import NL99, NL99_GC, GOW
-from build_despotic_table import plot_table, TG_GUESSES
+from build_despotic_table import plot_table, TG_GUESSES, save_table
 
 linear_part = np.linspace(1.0, 100.0, 30)  # 例如 1–100 取 30 个点
 log_part = np.logspace(np.log10(100.0), np.log10(10000.0), 20)
@@ -64,7 +65,35 @@ def configure_logging(log_path: Path) -> None:
 
 
 def load_table(npz_path: Path) -> DespoticTable:
-    with np.load(npz_path) as data:
+    with np.load(npz_path, allow_pickle=True) as data:
+        if "species" in data and any(key.endswith("_grid") for key in data.keys()):
+            species_names = [str(name) for name in data["species"]]
+            emitter_arr = data.get("emitter_abundances")
+            emitter_abundances = {
+                species: float(emitter_arr[idx]) if emitter_arr is not None else float("nan")
+                for idx, species in enumerate(species_names)
+            }
+            line_grids: dict[str, SpeciesLineGrid] = {}
+            for idx, species in enumerate(species_names):
+                line_grids[species] = SpeciesLineGrid(
+                    int_tb=data["int_tb_grid"][idx],
+                    int_intensity=data["int_intensity_grid"][idx],
+                    lum_per_h=data["lum_per_h_grid"][idx],
+                    tau=data["tau_grid"][idx],
+                    tau_dust=data["tau_dust_grid"][idx],
+                    tex=data["tex_grid"][idx],
+                    freq=data["freq_grid"][idx],
+                )
+            return DespoticTable(
+                species_data=line_grids,
+                tg_final=data["tg_final"],
+                nH_values=data["nH"],
+                col_density_values=data["col_density"],
+                emitter_abundances=emitter_abundances,
+                attempts=(),
+            )
+
+        # legacy format fallback
         shape = data["co_int_tb"].shape
 
         def get_array(key: str) -> np.ndarray:
@@ -72,17 +101,22 @@ def load_table(npz_path: Path) -> DespoticTable:
                 return data[key]
             return np.full(shape, np.nan)
 
-        return DespoticTable(
-            co_int_tb=data["co_int_tb"],
-            tg_final=data["tg_final"],
+        legacy_grid = SpeciesLineGrid(
+            int_tb=data["co_int_tb"],
             int_intensity=get_array("int_intensity"),
             lum_per_h=get_array("lum_per_h"),
             tau=get_array("tau"),
             tau_dust=get_array("tau_dust"),
             tex=get_array("tex"),
-            frequency=get_array("frequency"),
+            freq=get_array("frequency"),
+        )
+
+        return DespoticTable(
+            species_data={"CO": legacy_grid},
+            tg_final=data["tg_final"],
             nH_values=data["nH"],
             col_density_values=data["col_density"],
+            emitter_abundances={"CO": float("nan")},
             attempts=(),
         )
 
@@ -300,10 +334,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Emit warnings when DESPOTIC raises exceptions (default: disabled).",
     )
     parser.add_argument(
-        "--n-jobs",
+        "-j",
+        "--jobs",
+        dest="n_jobs",
         type=int,
-        default=1,
-        help="Number of parallel workers to use for recomputation (default: 1).",
+        default=-1,
+        help="Number of parallel workers to use (default: -1 uses all cores).",
     )
     parser.add_argument(
         "--nH-range",
@@ -334,9 +370,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Only consider column indices in [START, END) (0-based).",
     )
     parser.add_argument(
+        "--reuse-final",
         "--reuse-final-tg",
+        dest="reuse_final_tg",
         action="store_true",
-        help="If set, reuse the final Tg from failed DESPOTIC attempts as the next guess.",
+        help="Reuse the final DESPOTIC Tg as the next guess when a run fails.",
     )
     args = parser.parse_args(argv)
 

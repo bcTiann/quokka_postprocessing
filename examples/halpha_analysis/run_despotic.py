@@ -10,14 +10,37 @@ from matplotlib.colors import LogNorm
 import matplotlib.pyplot as plt
 from scipy.interpolate import RectBivariateSpline
 from matplotlib.ticker import LogLocator, LogFormatter
-from quokka2s.despotic_tables import (
-    DespoticTable,
-    compute_average,
-)
+from quokka2s.despotic_tables import DespoticTable, SpeciesLineGrid, compute_average
 
 
 def load_table(path: str) -> DespoticTable:
-    data = np.load(path)
+    data = np.load(path, allow_pickle=True)
+    if "species" in data and any(key.endswith("_grid") for key in data.keys()):
+        species_names = [str(name) for name in data["species"]]
+        emitter_arr = data.get("emitter_abundances")
+        emitter_abundances = {
+            species: float(emitter_arr[idx]) if emitter_arr is not None else float("nan")
+            for idx, species in enumerate(species_names)
+        }
+        line_grids: dict[str, SpeciesLineGrid] = {}
+        for idx, species in enumerate(species_names):
+            line_grids[species] = SpeciesLineGrid(
+                int_tb=data["int_tb_grid"][idx],
+                int_intensity=data["int_intensity_grid"][idx],
+                lum_per_h=data["lum_per_h_grid"][idx],
+                tau=data["tau_grid"][idx],
+                tau_dust=data["tau_dust_grid"][idx],
+                tex=data["tex_grid"][idx],
+                freq=data["freq_grid"][idx],
+            )
+        return DespoticTable(
+            species_data=line_grids,
+            tg_final=data["tg_final"],
+            nH_values=data["nH"],
+            col_density_values=data["col_density"],
+            emitter_abundances=emitter_abundances,
+        )
+
     shape = data["co_int_tb"].shape
 
     def get_array(key: str) -> np.ndarray:
@@ -25,17 +48,22 @@ def load_table(path: str) -> DespoticTable:
             return data[key]
         return np.full(shape, np.nan)
 
-    return DespoticTable(
-        co_int_tb=data["co_int_tb"],
-        tg_final=data["tg_final"],
+    legacy_grid = SpeciesLineGrid(
+        int_tb=data["co_int_tb"],
         int_intensity=get_array("int_intensity"),
         lum_per_h=get_array("lum_per_h"),
         tau=get_array("tau"),
         tau_dust=get_array("tau_dust"),
         tex=get_array("tex"),
-        frequency=get_array("frequency"),
+        freq=get_array("frequency"),
+    )
+
+    return DespoticTable(
+        species_data={"CO": legacy_grid},
+        tg_final=data["tg_final"],
         nH_values=data["nH"],
         col_density_values=data["col_density"],
+        emitter_abundances={"CO": float("nan")},
     )
 axis_map = {'x': 0, 'y': 1, 'z': 2}
 proj_axis_idx = axis_map[cfg.PROJECTION_AXIS]
@@ -57,29 +85,54 @@ dy_projection = dy_3d.sum(axis=0)
 
 dz_3d, dz_3d_extent = provider.get_cubic_box(('boxlib', 'dz'))
 dz_projection = dz_3d.sum(axis=0)
+
+dv_3d = dx_3d * dy_3d * dz_3d
 ################################################################
+
+
+
+# ================= DEBUGGING BLOCK =================
+print("\n--- DEBUGGING CELL VOLUME ---")
+# 打印一个网格的平均体积，使用它自己的原始单位
+print(f"Mean cell volume in original units: {dv_3d.mean()}")
+
+# 打印它在CGS单位制 (cm^3) 下的数值
+print(f"Mean cell volume in CGS (cm^3): {dv_3d.in_cgs().mean().v}") 
+print("-----------------------------\n")
+# ===================================================
 
 ###################### number density ##############################
 
 
-print("####################################")
+
+print("############ dx #################")
 print(f"dx_3d.mean : {dx_3d.mean()}")
 print(f"dx_3d.var : {dx_3d.var()}")
+print(f"dx units: {dx_3d.units}")
+print("####################################")
 
-print("...3D data retrieval complete.")
-print("####################################")
-print("####################################")
+print("############# dy #####################")
 print(f"dy_3d.mean : {dy_3d.mean()}")
 print(f"dy_3d.var : {dy_3d.var()}")
+print(f"dy units: {dy_3d.units}")
+print("####################################")
 
-print("...3D data retrieval complete.")
-print("####################################")
-print("####################################")
+print("############## dz ####################")
 print(f"dz_3d.mean : {dz_3d.mean()}")
 print(f"dz_3d.var : {dz_3d.var()}")
+print(f"dz units: {dz_3d.units}")
+print("####################################")
+
+print("############## dv ####################")
+print(f"dv_3d.mean : {dv_3d.mean()}")
+print(f"dv_3d.var : {dv_3d.var()}")
+print(f"dv units: {dv_3d.units}")
+print("####################################")
 
 print("...3D data retrieval complete.")
 print("####################################")
+
+
 
 
 X_H = cfg.X_H
@@ -88,18 +141,23 @@ density_3d, density_3d_extent = provider.get_cubic_box(
     field=('gas', 'density')
 )
 density_3d = provider.downsample_3d_array(density_3d, factor=factor)
-
+##################################
 n_H_3d = (density_3d * X_H) / m_H
+# units cm**(-3) its a volumn density! 
+##################################
+print("####################################")
+print(f"n_H_3d.mean : {n_H_3d.mean()}")
+print(f"n_H_3d.var : {n_H_3d.var()}")
+print(f"n_H_3d.units = {n_H_3d.units}")
+
+print("####################################")
+
+# print("\n--- Downsampling by factor of 2 ---")
 
 
-
-
-print("\n--- Downsampling by factor of 2 ---")
-
-
-print(f"Downsampled data type: {type(n_H_3d)}")
-print(f"Downsampled data units: {n_H_3d.units}")
-print(f"Downsampled data shape: {n_H_3d.shape}")
+# print(f"Downsampled data type: {type(n_H_3d)}")
+# print(f"Downsampled data units: {n_H_3d.units}")
+# print(f"Downsampled data shape: {n_H_3d.shape}")
 
 dx_3d, dx_3d_extent = provider.get_cubic_box(
     field=('boxlib', 'dx')
@@ -175,25 +233,49 @@ density_3d = provider.downsample_3d_array(density_3d, factor=factor)
 n_H_3d = (density_3d * X_H) / m_H
 
 
-fig, ax = plt.subplots(figsize=(8, 6))
-image = ax.imshow(n_H_3d[mid_x, :, :].T,
-                  extent=dx_3d_extent['x'],
-                  origin='lower',
-                  cmap='viridis',
-                  norm=LogNorm()
-)
+nH_slice = n_H_3d.in_cgs().to_ndarray()[mid_x, :, :]        # cm^-3
+colDen_slice = average_N_3d.in_cgs().to_ndarray()[mid_x, :, :]  # cm^-2
 
-cbar = fig.colorbar(image, ax=ax)
-cbar.set_label(f"K km/s")
-plt.savefig('n_H_3d_Slice', dpi=600, bbox_inches='tight')
-print("figure saved as 'n_H_3d_Slice'")
-plt.show()
+# n_H (cm^-3)
+fig, ax = plt.subplots(figsize=(8, 6))
+im = ax.imshow(
+    nH_slice.T,
+    extent=density_3d_extent['x'],
+    origin='lower',
+    cmap='viridis',
+    norm=LogNorm()
+)
+cbar = fig.colorbar(im, ax=ax)
+cbar.set_label(f"{n_H_3d.in_cgs().units}")
+ax.set_xlabel("y (cm)")
+ax.set_ylabel("z (cm)")
+plt.savefig("plots/nH_slice_cgs.png", dpi=600, bbox_inches="tight")
+plt.close(fig)
+
+# 柱密度 N_H (cm^-2)
+fig, ax = plt.subplots(figsize=(8, 6))
+im = ax.imshow(
+    colDen_slice.T,
+    extent=density_3d_extent['x'],
+    origin='lower',
+    cmap='viridis',
+    norm=LogNorm()
+)
+cbar = fig.colorbar(im, ax=ax)
+cbar.set_label(f"{average_N_3d.in_cgs().units}")
+ax.set_xlabel("y (cm)")
+ax.set_ylabel("z (cm)")
+plt.savefig("plots/colDen_slice_cgs.png", dpi=600, bbox_inches="tight")
+
+
+
 
 ######################### Load table #######################
-table = load_table("fine_table.npz")
+table = load_table("output_tables_reuseTg/table_50x50_fixed.npz")
 log_nH_grid = np.log10(table.nH_values)
 log_col_grid = np.log10(table.col_density_values)
-co_interpolator = RectBivariateSpline(log_nH_grid, log_col_grid, table.co_int_tb)
+log_lumPerH = np.log10(table.lum_per_h)
+log_lumPerH_interpolator = RectBivariateSpline(log_nH_grid, log_col_grid, log_lumPerH)
 ################################################################
 
 nH_cgs = n_H_3d.in_cgs().to_ndarray()
@@ -203,25 +285,57 @@ log_nH_vals = np.log10(nH_cgs)
 log_col_vals = np.log10(colDen_cgs)
 
 
+############
+# Restric each log(nH) in the tables avaliable values
 log_nH_vals = np.clip(log_nH_vals, log_nH_grid[0], log_nH_grid[-1])
+
+# Restric each log(colDen) in the tables avaliable values
 log_col_vals = np.clip(log_col_vals, log_col_grid[0], log_col_grid[-1])
+# so that the interplation won't use outside table value which is not stable
+#############
 
-co_int_3d = co_interpolator.ev(log_nH_vals.ravel(), log_col_vals.ravel())
-co_int_3d = co_int_3d.reshape(nH_cgs.shape)
 
-co_slice = co_int_3d[mid_x, :, : ]
+# ravel --> flatten the 3D array to 1D
+log_lumPerH_3d = log_lumPerH_interpolator.ev(log_nH_vals.ravel(), log_col_vals.ravel())
+log_lumPerH_3d = log_lumPerH_3d.reshape(nH_cgs.shape)
+lumPerH_3d = np.power(10.0, log_lumPerH_3d) # erg s^-1 H^-1
+
+
+
+lum = lumPerH_3d * dv_3d.in_cgs().to_ndarray() * n_H_3d.in_cgs().to_ndarray() # (erg s^-1 H^-1) * cm^3 * (H * cm^-3) 
+lum_per_H_yt = yt.YTArray(lumPerH_3d, "erg/s")
+lum = yt.YTArray(lum, "erg/s")
+
+lum_slice = lum[mid_x, :, : ]
+
+lum_x_projection = lum.sum(axis=0)
+lum_z_projection = lum.sum(axis=2)
+
 
 fig, ax = plt.subplots(figsize=(8, 6))
-image = ax.imshow(co_slice.T,
+image = ax.imshow(lum_x_projection.T,
                   extent=dx_3d_extent['x'],
                   origin='lower',
                   cmap='viridis',
                   norm=LogNorm())
 
 cbar = fig.colorbar(image, ax=ax)
-cbar.set_label(f"K km/s")
-plt.savefig('CO_int_Slice', dpi=600, bbox_inches='tight')
-print("figure saved as 'CO_int_Slice_Table'")
+cbar.set_label(f"Luminosity ({lum.units})")
+plt.savefig('plots/luminosity_CO_xProjection.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_xProjection'")
+plt.show()
+
+fig, ax = plt.subplots(figsize=(8, 6))
+image = ax.imshow(lum_z_projection.T,
+                  extent=dx_3d_extent['x'],
+                  origin='lower',
+                  cmap='viridis',
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"luminosity")
+plt.savefig('plots/luminosity_CO_zProjection.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_zProjection'")
 plt.show()
 
 # fig, ax = plt.subplots(figsize=(8, 6))
@@ -239,13 +353,13 @@ plt.show()
 
 
 
-co_map_K_kms, Tg_map = q2s.run_despotic_on_map(
-                                    nH_map=n_H_3d.in_cgs().to_ndarray()[:, :, mid_z], 
-                                    colDen_map=average_N_3d.in_cgs().to_ndarray()[:, :, mid_z],
-                                    Tg_map=temp_3d.in_cgs().to_ndarray()[:, :, mid_z]
-)
+# co_map_K_kms, Tg_map = q2s.run_despotic_on_map(
+#                                     nH_map=n_H_3d.in_cgs().to_ndarray()[:, :, mid_z], 
+#                                     colDen_map=average_N_3d.in_cgs().to_ndarray()[:, :, mid_z],
+#                                     Tg_map=temp_3d.in_cgs().to_ndarray()[:, :, mid_z]
+# )
 
-co_map_masked = np.ma.masked_where(np.isnan(co_map_K_kms), co_map_K_kms)
+# co_map_masked = np.ma.masked_where(np.isnan(co_map_K_kms), co_map_K_kms)
 
 
 # fig, ax = plt.subplots(figsize=(8, 6))
@@ -261,19 +375,19 @@ co_map_masked = np.ma.masked_where(np.isnan(co_map_K_kms), co_map_K_kms)
 # plt.show()
 
 
-params = cfg.ANALYSES["co_despotic"]
+# params = cfg.ANALYSES["co_despotic"]
 
-q2s.create_plot(
-    data_2d=co_map_masked.T, # .T to transpose for correct orientation
-    title=params['title'],
-    cbar_label=params['cbar_label'],
-    filename='CO_map_Despotic_oneByeone',
-    extent=dx_3d_extent['z'],
-    xlabel='y',
-    ylabel='z',
-    norm=params['norm'],
-    camp='viridis' 
-)
+# q2s.create_plot(
+#     data_2d=co_map_masked.T, # .T to transpose for correct orientation
+#     title=params['title'],
+#     cbar_label=params['cbar_label'],
+#     filename='CO_map_Despotic_oneByeone',
+#     extent=dx_3d_extent['z'],
+#     xlabel='y',
+#     ylabel='z',
+#     norm=params['norm'],
+#     camp='viridis' 
+# )
 
 # q2s.create_plot(
 #     data_2d=Tg_map.T,
