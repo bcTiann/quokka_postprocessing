@@ -1,4 +1,3 @@
-import despotic
 from despotic import cloud
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,10 +26,10 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 14.9
-cell.nH = 53.3669923120631
+cell.Tg = 99982648.24802746
+cell.nH = 1e-6
 # cell.nH = 3206.2671377973843
-cell.colDen = 1e+24
+cell.colDen = 1e+23
 
 
 co_line_map = []
@@ -55,7 +54,7 @@ cell.rad.TradDust   = 0.0        # IR radiation field seen by the dust
 cell.rad.ionRate    = 2.0e-17    # Primary ionization rate
 cell.rad.chi        = 1.0        # ISRF normalized to Solar neighborhood
 
-cell.addEmitter("c+", 8.0e-9)
+cell.addEmitter("CO", 8.0e-9)
 
 
 start_time = time.time()  # 2. 記錄開始時間
@@ -70,12 +69,18 @@ print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
 print(f"----------------------------")
 
-converge = cell.setChemEq(network=NL99, evolveTemp="iterateDust")
+converge = cell.setChemEq(network=NL99, 
+                          evolveTemp="iterateDust",
+                          tol=1e-8,
+                          maxTime=1e30,
+                          maxTempIter=10000,
+                          )
 print(f"converge = {converge}")
-
+print(f"final Tg = {cell.Tg}")
 
 # --- 處理計算結果 ---
 lines = cell.lineLum("CO")
+
 
 co_int_TB = lines[0]['intTB']
 co_line_map.append(co_int_TB)

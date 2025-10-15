@@ -355,7 +355,13 @@ def calculate_single_despotic_point(
 
             stdout_buffer = io.StringIO()
             with contextlib.redirect_stdout(stdout_buffer):
-                converge = cell.setChemEq(network=chem_network, evolveTemp="iterateDust")
+                converge = cell.setChemEq(network=NL99, 
+                          evolveTemp="iterateDust",
+                          tol=1e-8,
+                          maxTime=1e30,
+                          maxTempIter=10000,
+                          )
+                
             _log_despotic_stdout(stdout_buffer)
 
             if not converge:
