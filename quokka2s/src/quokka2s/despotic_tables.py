@@ -91,6 +91,7 @@ class AttemptRecord:
     repeat_equilibrium: int
     line_results: Mapping[str, LineLumResult] = field(default_factory=dict)
     residual_trace: tuple[float, ...] = tuple()
+    temperature_converged: bool = False
     error_message: str | None = None
 
     def __post_init__(self) -> None:
@@ -280,11 +281,12 @@ def _log_despotic_stdout(output: io.StringIO | str) -> None:
         return
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped and not stripped.startswith("make: ***"):
-            if stripped.startswith("setChemEquil:"):
-                LOGGER.debug("DESPOTIC: %s", stripped)
-            else:
-                LOGGER.warning("DESPOTIC: %s", stripped)
+        if not stripped or stripped.startswith("make: ***"):
+            continue
+        if stripped.startswith("setChemEquil:") or "Temperature converged!" in stripped:
+            LOGGER.debug("DESPOTIC: %s", stripped)
+            continue
+        LOGGER.warning("DESPOTIC: %s", stripped)
 
 
 def calculate_single_despotic_point(
@@ -316,6 +318,7 @@ def calculate_single_despotic_point(
     last_final_tg = float("nan")
     last_line_results: dict[str, LineLumResult] = _empty_line_results(species_order)
     last_residual_trace: tuple[float, ...] = tuple()
+    last_temp_converged = False
 
     pending_guesses: list[float] = [float(g) for g in initial_Tg_guesses]
     seen_guesses: list[float] = []
@@ -346,6 +349,7 @@ def calculate_single_despotic_point(
         attempt_number += 1
         last_guess = guess
         try:
+            temp_converged_run = False
             cell = cloud()
             cell.noWarn = True
             cell.nH = nH_val
@@ -386,6 +390,7 @@ def calculate_single_despotic_point(
 
             output = stdout_buffer.getvalue()
             residual_trace_run.extend(_extract_residuals(output))
+            temp_converged_run = temp_converged_run or "Temperature converged!" in output
             _log_despotic_stdout(output)
 
             if not converge:
@@ -394,6 +399,7 @@ def calculate_single_despotic_point(
                 line_results = _empty_line_results(species_order)
                 last_line_results = dict(line_results)
                 last_residual_trace = tuple(residual_trace_run)
+                last_temp_converged = temp_converged_run
                 if attempt_log is not None:
                     attempt_log.append(
                         AttemptRecord(
@@ -409,6 +415,7 @@ def calculate_single_despotic_point(
                             repeat_equilibrium=repeat_equilibrium,
                             line_results=line_results,
                             residual_trace=last_residual_trace,
+                            temperature_converged=temp_converged_run,
                         )
                     )
                 _enqueue_retry(final_tg)
@@ -426,6 +433,7 @@ def calculate_single_despotic_point(
             last_final_tg = final_Tg
             last_line_results = dict(line_results)
             last_residual_trace = tuple(residual_trace_run)
+            last_temp_converged = temp_converged_run
 
             if attempt_log is not None:
                 attempt_log.append(
@@ -442,6 +450,7 @@ def calculate_single_despotic_point(
                         repeat_equilibrium=repeat_equilibrium,
                         line_results=line_results,
                         residual_trace=last_residual_trace,
+                        temperature_converged=temp_converged_run,
                     )
                 )
             return MappingProxyType(dict(line_results)), final_Tg
@@ -454,6 +463,7 @@ def calculate_single_despotic_point(
             line_results = _empty_line_results(species_order)
             last_line_results = dict(line_results)
             last_residual_trace = tuple(residual_trace_run)
+            last_temp_converged = temp_converged_run
             if attempt_log is not None:
                 attempt_log.append(
                     AttemptRecord(
@@ -469,6 +479,7 @@ def calculate_single_despotic_point(
                         repeat_equilibrium=repeat_equilibrium,
                         line_results=line_results,
                         residual_trace=tuple(residual_trace_run),
+                        temperature_converged=temp_converged_run,
                         error_message=str(exc),
                     )
                 )
@@ -495,6 +506,7 @@ def calculate_single_despotic_point(
                 repeat_equilibrium=repeat_equilibrium,
                 line_results=last_line_results,
                 residual_trace=last_residual_trace,
+                temperature_converged=last_temp_converged,
             )
         )
     return MappingProxyType(dict(last_line_results)), float("nan")
