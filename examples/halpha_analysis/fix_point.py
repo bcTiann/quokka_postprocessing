@@ -168,14 +168,6 @@ def _ensure_species_arrays(
     return arrays
 
 
-def _line_result_for_species(record: AttemptRecord, species: str) -> LineLumResult:
-    mapping = record.line_results
-    if species in mapping:
-        return mapping[species]
-    if mapping:
-        return next(iter(mapping.values()))
-    return EMPTY_LINE_RESULT
-
 
 def select_indices(values: np.ndarray, span: Tuple[int, int] | None, value_range: Tuple[float, float] | None) -> np.ndarray:
     if span is not None:
@@ -562,34 +554,39 @@ def main(argv: Sequence[str] | None = None) -> None:
                     "tau_dust",
                     "Tex",
                     "frequency",
+                    "max_residual",
+                    "residual_trace",
                     "error_message",
                 ]
             )
             for rec in new_table.attempts:
-                line_result = _line_result_for_species(rec, species_name)
-                writer.writerow(
-                    [
-                        rec.row_idx,
-                        rec.col_idx,
-                        rec.nH,
-                        rec.colDen,
-                        rec.tg_guess,
-                        rec.final_Tg,
-                        rec.attempt_number,
-                        rec.attempt_type,
-                        rec.converged,
-                        rec.repeat_equilibrium,
-                        species_name,
-                        line_result.int_tb,
-                        line_result.int_intensity,
-                        line_result.lum_per_h,
-                        line_result.tau,
-                        line_result.tau_dust,
-                        line_result.tex,
-                        line_result.freq,
-                        rec.error_message or "",
-                    ]
-                )
+                residual_trace = ";".join(f"{val:.3e}" for val in rec.residual_trace)
+                for species_name, line_result in rec.line_results.items():
+                    writer.writerow(
+                        [
+                            rec.row_idx,
+                            rec.col_idx,
+                            rec.nH,
+                            rec.colDen,
+                            rec.tg_guess,
+                            rec.final_Tg,
+                            rec.attempt_number,
+                            rec.attempt_type,
+                            rec.converged,
+                            rec.repeat_equilibrium,
+                            species_name,
+                            line_result.int_tb,
+                            line_result.int_intensity,
+                            line_result.lum_per_h,
+                            line_result.tau,
+                            line_result.tau_dust,
+                            line_result.tex,
+                            line_result.freq,
+                            rec.max_residual,
+                            residual_trace,
+                            rec.error_message or "",
+                        ]
+                    )
 
     LOGGER.info("Wrote updated table to %s", output_npz_path)
     if new_table.attempts:

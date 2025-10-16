@@ -10,6 +10,7 @@ import contextlib
 import io
 import logging
 import math
+import re
 
 
 import numpy as np
@@ -89,6 +90,7 @@ class AttemptRecord:
     converged: bool
     repeat_equilibrium: int
     line_results: Mapping[str, LineLumResult] = field(default_factory=dict)
+    residual_trace: tuple[float, ...] = tuple()
     error_message: str | None = None
 
     def __post_init__(self) -> None:
@@ -135,6 +137,12 @@ class AttemptRecord:
     def frequency(self) -> float:
         result = self._line_result()
         return result.freq if result is not None else float("nan")
+
+    @property
+    def max_residual(self) -> float:
+        if not self.residual_trace:
+            return float("nan")
+        return max(self.residual_trace)
 
 
 @dataclass(frozen=True)
@@ -253,17 +261,30 @@ def _extract_line_result(transitions: Sequence[Mapping[str, float]]) -> LineLumR
     )
 
 
-def _log_despotic_stdout(buffer: io.StringIO) -> None:
+_RESIDUAL_RE = re.compile(r"residual\s*=\s*([0-9eE.+-]+)")
+
+
+def _extract_residuals(text: str) -> list[float]:
+    return [float(match) for match in _RESIDUAL_RE.findall(text)]
+
+
+def _log_despotic_stdout(output: io.StringIO | str) -> None:
     """Flush redirected stdout from DESPOTIC calls into the logger."""
-    output = buffer.getvalue()
-    if not output:
+    if isinstance(output, io.StringIO):
+        text = output.getvalue()
+        output.truncate(0)
+        output.seek(0)
+    else:
+        text = output
+    if not text:
         return
-    buffer.truncate(0)
-    buffer.seek(0)
-    for line in output.splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("make: ***"):
-            LOGGER.warning("DESPOTIC: %s", stripped)
+            if stripped.startswith("setChemEquil:"):
+                LOGGER.debug("DESPOTIC: %s", stripped)
+            else:
+                LOGGER.warning("DESPOTIC: %s", stripped)
 
 
 def calculate_single_despotic_point(
@@ -294,6 +315,7 @@ def calculate_single_despotic_point(
     attempt_number = 0
     last_final_tg = float("nan")
     last_line_results: dict[str, LineLumResult] = _empty_line_results(species_order)
+    last_residual_trace: tuple[float, ...] = tuple()
 
     pending_guesses: list[float] = [float(g) for g in initial_Tg_guesses]
     seen_guesses: list[float] = []
@@ -353,22 +375,25 @@ def calculate_single_despotic_point(
             for species, abundance in emitter_abundances.items():
                 cell.addEmitter(species, abundance)
 
+            residual_trace_run: list[float] = []
             stdout_buffer = io.StringIO()
             with contextlib.redirect_stdout(stdout_buffer):
-                converge = cell.setChemEq(network=NL99, 
-                          evolveTemp="iterateDust",
-                          tol=1e-8,
-                          maxTime=1e30,
-                          maxTempIter=10000,
-                          )
-                
-            _log_despotic_stdout(stdout_buffer)
+                converge = cell.setChemEq(
+                    network=chem_network,
+                    evolveTemp="iterateDust",
+                    verbose=True,
+                )
+
+            output = stdout_buffer.getvalue()
+            residual_trace_run.extend(_extract_residuals(output))
+            _log_despotic_stdout(output)
 
             if not converge:
                 final_tg = float(cell.Tg)
                 last_final_tg = final_tg
                 line_results = _empty_line_results(species_order)
                 last_line_results = dict(line_results)
+                last_residual_trace = tuple(residual_trace_run)
                 if attempt_log is not None:
                     attempt_log.append(
                         AttemptRecord(
@@ -383,6 +408,7 @@ def calculate_single_despotic_point(
                             converged=False,
                             repeat_equilibrium=repeat_equilibrium,
                             line_results=line_results,
+                            residual_trace=last_residual_trace,
                         )
                     )
                 _enqueue_retry(final_tg)
@@ -393,12 +419,13 @@ def calculate_single_despotic_point(
                 stdout_buffer = io.StringIO()
                 with contextlib.redirect_stdout(stdout_buffer):
                     transitions = cell.lineLum(species)
-                _log_despotic_stdout(stdout_buffer)
+                _log_despotic_stdout(stdout_buffer.getvalue())
                 line_results[species] = _extract_line_result(transitions)
 
             final_Tg = float(cell.Tg)
             last_final_tg = final_Tg
             last_line_results = dict(line_results)
+            last_residual_trace = tuple(residual_trace_run)
 
             if attempt_log is not None:
                 attempt_log.append(
@@ -414,6 +441,7 @@ def calculate_single_despotic_point(
                         converged=True,
                         repeat_equilibrium=repeat_equilibrium,
                         line_results=line_results,
+                        residual_trace=last_residual_trace,
                     )
                 )
             return MappingProxyType(dict(line_results)), final_Tg
@@ -425,6 +453,7 @@ def calculate_single_despotic_point(
             last_final_tg = fallback_tg
             line_results = _empty_line_results(species_order)
             last_line_results = dict(line_results)
+            last_residual_trace = tuple(residual_trace_run)
             if attempt_log is not None:
                 attempt_log.append(
                     AttemptRecord(
@@ -439,6 +468,7 @@ def calculate_single_despotic_point(
                         converged=False,
                         repeat_equilibrium=repeat_equilibrium,
                         line_results=line_results,
+                        residual_trace=tuple(residual_trace_run),
                         error_message=str(exc),
                     )
                 )
@@ -464,6 +494,7 @@ def calculate_single_despotic_point(
                 converged=False,
                 repeat_equilibrium=repeat_equilibrium,
                 line_results=last_line_results,
+                residual_trace=last_residual_trace,
             )
         )
     return MappingProxyType(dict(last_line_results)), float("nan")
