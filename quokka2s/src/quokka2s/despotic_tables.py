@@ -386,7 +386,7 @@ def calculate_single_despotic_point(
                     network=chem_network,
                     tol=1e-6, 
                     maxTime=1e16,
-                    maxTempIter=50.
+                    maxTempIter=50,
                     evolveTemp="iterateDust",
                     verbose=True,
                 )
