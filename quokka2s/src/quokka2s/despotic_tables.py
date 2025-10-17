@@ -9,6 +9,7 @@ import warnings
 import contextlib
 import io
 import logging
+import time
 import math
 import re
 
@@ -93,6 +94,7 @@ class AttemptRecord:
     residual_trace: tuple[float, ...] = tuple()
     temperature_converged: bool = False
     error_message: str | None = None
+    duration: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "line_results", MappingProxyType(dict(self.line_results)))
@@ -329,12 +331,23 @@ def calculate_single_despotic_point(
         the final gas temperature. Values are ``nan`` if all guesses fail.
     """
     species_order = tuple(emitter_abundances.keys())
+#   emitter_abundances = {"CO": 8.0e-9, "C+": 1.1e-4}
+#   species_order = tuple(emitter_abundances.keys())  # 结果是 ("CO", "C+")
+
     last_guess: float | None = None
     attempt_number = 0
     last_final_tg = float("nan")
     last_line_results: dict[str, LineLumResult] = _empty_line_results(species_order)
+    ######
+    # {
+    # "CO": LineLumResult(int_tb=nan, int_intensity=nan, lum_per_h=nan,
+    #                     tau=nan, tau_dust=nan, tex=nan, freq=nan),
+    # "C+": LineLumResult(... 全是 nan ...)
+    # }
+    #######
     last_residual_trace: tuple[float, ...] = tuple()
     last_temp_converged = False
+    last_duration = float("nan")
 
     pending_guesses: list[float] = [float(g) for g in initial_Tg_guesses]
     seen_guesses: list[float] = []
@@ -364,6 +377,7 @@ def calculate_single_despotic_point(
         seen_guesses.append(guess)
         attempt_number += 1
         last_guess = guess
+        attempt_start = time.perf_counter()
         try:
             temp_converged_run = False
             cell = cloud()
@@ -453,6 +467,8 @@ def calculate_single_despotic_point(
             last_line_results = dict(line_results)
             last_residual_trace = tuple(residual_trace_run)
             last_temp_converged = temp_converged_run
+            attempt_duration = time.perf_counter() - attempt_start
+            last_duration = attempt_duration
 
             if attempt_log is not None:
                 attempt_log.append(
@@ -470,11 +486,13 @@ def calculate_single_despotic_point(
                         line_results=line_results,
                         residual_trace=last_residual_trace,
                         temperature_converged=temp_converged_run,
+                        duration=attempt_duration,
                     )
                 )
             return MappingProxyType(dict(line_results)), final_Tg
 
         except Exception as exc:  # pragma: no cover - DESPOTIC exceptions vary
+            attempt_duration = time.perf_counter() - attempt_start
             fallback_cell = locals().get("cell")
             fallback_tg = float(getattr(fallback_cell, "Tg", float("nan"))) if fallback_cell is not None else float("nan")
 
@@ -483,6 +501,7 @@ def calculate_single_despotic_point(
             last_line_results = dict(line_results)
             last_residual_trace = tuple(residual_trace_run)
             last_temp_converged = temp_converged_run
+            last_duration = attempt_duration
             if attempt_log is not None:
                 attempt_log.append(
                     AttemptRecord(
@@ -500,6 +519,7 @@ def calculate_single_despotic_point(
                         residual_trace=tuple(residual_trace_run),
                         temperature_converged=temp_converged_run,
                         error_message=str(exc),
+                        duration=attempt_duration,
                     )
                 )
             if log_failures:
@@ -526,6 +546,7 @@ def calculate_single_despotic_point(
                 line_results=last_line_results,
                 residual_trace=last_residual_trace,
                 temperature_converged=last_temp_converged,
+                duration=last_duration,
             )
         )
     return MappingProxyType(dict(last_line_results)), float("nan")
