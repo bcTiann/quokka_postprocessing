@@ -19,9 +19,10 @@ from tqdm_joblib import tqdm_joblib
 from quokka2s.despotic_tables import (
     AttemptRecord,
     DespoticTable,
-    LineLumResult,
     SpeciesLineGrid,
     calculate_single_despotic_point,
+    ensure_species_fields,
+    select_indices,
 )
 from despotic.chemistry import NL99, NL99_GC, GOW
 from build_despotic_table import plot_table, TG_GUESSES, save_table
@@ -122,63 +123,6 @@ def load_table(npz_path: Path) -> DespoticTable:
         )
 
 
-DEFAULT_TARGET_SPECIES = "CO"
-LINE_FIELDS = (
-    "int_tb",
-    "int_intensity",
-    "lum_per_h",
-    "tau",
-    "tau_dust",
-    "tex",
-    "freq",
-)
-EMPTY_LINE_RESULT = LineLumResult(
-    int_tb=float("nan"),
-    int_intensity=float("nan"),
-    lum_per_h=float("nan"),
-    tau=float("nan"),
-    tau_dust=float("nan"),
-    tex=float("nan"),
-    freq=float("nan"),
-)
-
-
-def _select_species(table: DespoticTable, requested: str | None) -> tuple[str, SpeciesLineGrid]:
-    if requested and requested in table.species_data:
-        return requested, table.get_species_grid(requested)
-    if requested and requested not in table.species_data:
-        LOGGER.warning(
-            "Requested species '%s' unavailable; falling back to '%s'.",
-            requested,
-            table.primary_species,
-        )
-    fallback = table.primary_species
-    return fallback, table.get_species_grid(fallback)
-
-
-def _ensure_species_arrays(
-    buffers: dict[str, dict[str, np.ndarray]],
-    species: str,
-    shape: tuple[int, int],
-) -> dict[str, np.ndarray]:
-    arrays = buffers.get(species)
-    if arrays is None:
-        arrays = {field: np.full(shape, np.nan, dtype=float) for field in LINE_FIELDS}
-        buffers[species] = arrays
-    return arrays
-
-
-
-def select_indices(values: np.ndarray, span: Tuple[int, int] | None, value_range: Tuple[float, float] | None) -> np.ndarray:
-    if span is not None:
-        start, end = span
-        return np.arange(max(start, 0), min(end, values.size))
-    if value_range is not None:
-        low, high = value_range
-        return np.where((values >= low) & (values <= high))[0]
-    return np.arange(values.size)
-
-
 def recompute_low_co_cells(
     table: DespoticTable,
     *,
@@ -198,27 +142,27 @@ def recompute_low_co_cells(
     reuse_failed_tg: bool = False,
     reuse_max_insertions: int = 3,
 ) -> tuple[DespoticTable, str]:
+    if target_species is None:
+        raise ValueError("target_species must be provided for recomputation.")
+
     grid_shape = table.tg_final.shape
-    species_name, target_grid = _select_species(table, target_species or DEFAULT_TARGET_SPECIES)
+    species_name, species_grid = table.require_species(target_species)
 
-    species_buffers: dict[str, dict[str, np.ndarray]] = {
-        name: {field: np.array(getattr(grid, field), copy=True) for field in LINE_FIELDS}
-        for name, grid in table.species_data.items()
-    }
-    _ensure_species_arrays(species_buffers, species_name, grid_shape)
+    species_fields = table.clone_species_fields()
+    ensure_species_fields(species_fields, species_name, grid_shape)
 
-    target_arrays = species_buffers[species_name]
-    co_grid = target_arrays["int_tb"]
-    intensity_grid = target_arrays["int_intensity"]
-    lum_grid = target_arrays["lum_per_h"]
-    tau_grid = target_arrays["tau"]
-    tau_dust_grid = target_arrays["tau_dust"]
-    tex_grid = target_arrays["tex"]
-    freq_grid = target_arrays["freq"]
+    target_fields = species_fields[species_name]
+    co_grid = target_fields["int_tb"]
+    intensity_grid = target_fields["int_intensity"]
+    lum_grid = target_fields["lum_per_h"]
+    tau_grid = target_fields["tau"]
+    tau_dust_grid = target_fields["tau_dust"]
+    tex_grid = target_fields["tex"]
+    freq_grid = target_fields["freq"]
     tg_grid = np.array(table.tg_final, copy=True)
 
-    rows = select_indices(nH_values, row_span, nH_range)
-    cols = select_indices(col_values, col_span, col_range)
+    rows = select_indices(nH_values, index_span=row_span, value_range=nH_range)
+    cols = select_indices(col_values, index_span=col_span, value_range=col_range)
 
     if rows.size == 0 or cols.size == 0:
         LOGGER.info("No cells match the specified region; skipping recomputation.")
@@ -319,7 +263,7 @@ def recompute_low_co_cells(
     ) in results:
         tg_grid[row_idx, col_idx] = tg_val
         for species, result in line_map.items():
-            arrays = _ensure_species_arrays(species_buffers, species, grid_shape)
+            arrays = ensure_species_fields(species_fields, species, grid_shape)
             arrays["int_tb"][row_idx, col_idx] = result.int_tb
             arrays["int_intensity"][row_idx, col_idx] = result.int_intensity
             arrays["lum_per_h"][row_idx, col_idx] = result.lum_per_h
@@ -329,25 +273,9 @@ def recompute_low_co_cells(
             arrays["freq"][row_idx, col_idx] = result.freq
         attempt_records.extend(row_log)
 
-    species_data = {
-        species: SpeciesLineGrid(
-            int_tb=arrays["int_tb"],
-            int_intensity=arrays["int_intensity"],
-            lum_per_h=arrays["lum_per_h"],
-            tau=arrays["tau"],
-            tau_dust=arrays["tau_dust"],
-            tex=arrays["tex"],
-            freq=arrays["freq"],
-        )
-        for species, arrays in species_buffers.items()
-    }
-
-    updated_table = DespoticTable(
-        species_data=species_data,
+    updated_table = table.with_updated_fields(
+        species_fields=species_fields,
         tg_final=tg_grid,
-        nH_values=table.nH_values,
-        col_density_values=table.col_density_values,
-        emitter_abundances=table.emitter_abundances,
         attempts=table.attempts + tuple(attempt_records),
     )
     return updated_table, species_name
@@ -431,8 +359,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument(
         "--species",
         type=str,
-        default=None,
-        help="Emitter species to monitor and threshold (default: CO).",
+        required=True,
+        help="Emitter species to monitor and threshold.",
     )
     args = parser.parse_args(argv)
 
@@ -450,7 +378,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         args.repeat,
         args.n_jobs,
         args.reuse_final_tg,
-        args.species or DEFAULT_TARGET_SPECIES,
+        args.species,
     )
     tag = args.output_npz.stem.replace("table_", "")
 
@@ -474,12 +402,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         reuse_failed_tg=reuse_failed_tg,
     )
 
+    species_grid = new_table.get_species_grid(species_name)
+
+
     species_token = species_name.replace("+", "plus").lower()
 
     recomputed_plot = output_dir / f"{species_token}_int_TB_{tag}.png"
     plot_table(
         table=new_table,
-        data=new_table.co_int_tb,
+        data=species_grid.int_tb,
         output_path=str(recomputed_plot),
         title=f"DESPOTIC Lookup Table ({tag})",
         cbar_label=f"{species_name} Integrated Brightness Temp (K km/s)",
@@ -496,21 +427,21 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     plot_table(
         table=new_table,
-        data=new_table.int_intensity,
+        data=species_grid.int_intensity,
         output_path=str(output_dir / f"{species_token}_intensity_{tag}.png"),
         title=f"{species_name} Integrated Intensity ({tag})",
         cbar_label=f"{species_name} Integrated Intensity (erg cm$^{{-2}}$ s$^{{-1}}$ sr$^{{-1}}$)",
     )
     plot_table(
         table=new_table,
-        data=new_table.lum_per_h,
+        data=species_grid.lum_per_h,
         output_path=str(output_dir / f"{species_token}_lum_per_H_{tag}.png"),
         title=f"{species_name} Luminosity per H ({tag})",
         cbar_label=f"{species_name} Luminosity per H (erg s$^{{-1}}$ H$^{{-1}}$)",
     )
     plot_table(
         table=new_table,
-        data=new_table.tau,
+        data=species_grid.tau,
         output_path=str(output_dir / f"{species_token}_tau_{tag}.png"),
         title=f"{species_name} Line Optical Depth ({tag})",
         cbar_label=f"{species_name} Line Optical Depth",
@@ -518,7 +449,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     plot_table(
         table=new_table,
-        data=new_table.tau_dust,
+        data=species_grid.tau_dust,
         output_path=str(output_dir / f"{species_token}_tau_dust_{tag}.png"),
         title=f"Dust Optical Depth ({tag})",
         cbar_label="Dust Optical Depth",

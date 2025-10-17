@@ -26,10 +26,10 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 1.24802746
-cell.nH = 1e-6
+cell.Tg = 1000000.24802746
+cell.nH = 1.5264179e-4
 # cell.nH = 3206.2671377973843
-cell.colDen = 1e+23
+cell.colDen = 9.10298177991519e+19
 
 
 co_line_map = []
@@ -71,9 +71,9 @@ print(f"----------------------------")
 
 converge = cell.setChemEq(network=NL99, 
                           evolveTemp="iterateDust",
-                          tol=1e-8,
-                          maxTime=1e30,
-                          maxTempIter=10000,
+                          tol=1e-6,
+                          maxTime=1e26,
+                          maxTempIter=500,
                           )
 print(f"converge = {converge}")
 print(f"final Tg = {cell.Tg}")

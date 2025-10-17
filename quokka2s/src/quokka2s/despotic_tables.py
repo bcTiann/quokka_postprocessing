@@ -164,50 +164,66 @@ class DespoticTable:
     @property
     def species(self) -> Tuple[str, ...]:
         return tuple(self.species_data.keys())
+    
+    def require_species(self, species: str) -> tuple[str, SpeciesLineGrid]:
+        if not self.species:
+            raise ValueError("DespoticTable contains no species data.")
+        if species not in self.species_data:
+            available = ", ".join(self.species)
+            raise ValueError(
+                f"Requested species '{species}' not found; available species: {available}"
+            )
+        return species, self.species_data[species]
 
-    @property
-    def primary_species(self) -> str:
-        if not self.species_data:
-            raise ValueError("DespoticTable contains no species data")
-        return next(iter(self.species_data))
 
-    def _compat_species_grid(self, species: str = "CO") -> SpeciesLineGrid:
-        if species in self.species_data:
-            return self.species_data[species]
-        if not self.species_data:
-            raise ValueError("DespoticTable contains no species data")
-        return next(iter(self.species_data.values()))
 
     def get_species_grid(self, species: str) -> SpeciesLineGrid:
         return self.species_data[species]
 
-    @property
-    def co_int_tb(self) -> np.ndarray:
-        return self._compat_species_grid().int_tb
+    def clone_species_fields(self) -> dict[str, dict[str, np.ndarray]]:
+        field_map: dict[str, dict[str, np.ndarray]] = {}
+        for name, grid in self.species_data.items():
+            field_map[name] = {
+                field: np.array(getattr(grid, field), copy=True)  # type: ignore[arg-type]
+                for field in LINE_RESULT_FIELDS
+            }
+        return field_map
 
-    @property
-    def int_intensity(self) -> np.ndarray:
-        return self._compat_species_grid().int_intensity
+    def with_updated_fields(
+        self,
+        *,
+        species_fields: Mapping[str, Mapping[str, np.ndarray]],
+        tg_final: np.ndarray | None = None,
+        attempts: Sequence[AttemptRecord] | None = None,
+    ) -> "DespoticTable":
+        updated_species = {
+            name: SpeciesLineGrid(
+                int_tb=np.asarray(fields["int_tb"]),
+                int_intensity=np.asarray(fields["int_intensity"]),
+                lum_per_h=np.asarray(fields["lum_per_h"]),
+                tau=np.asarray(fields["tau"]),
+                tau_dust=np.asarray(fields["tau_dust"]),
+                tex=np.asarray(fields["tex"]),
+                freq=np.asarray(fields["freq"]),
+            )
+            for name, fields in species_fields.items()
+        }
+        tg_array = np.asarray(tg_final) if tg_final is not None else self.tg_final
+        attempt_records: Tuple[AttemptRecord, ...]
+        if attempts is None:
+            attempt_records = self.attempts
+        else:
+            attempt_records = tuple(attempts)
+        return DespoticTable(
+            species_data=updated_species,
+            tg_final=tg_array,
+            nH_values=self.nH_values,
+            col_density_values=self.col_density_values,
+            emitter_abundances=self.emitter_abundances,
+            attempts=attempt_records,
+        )
 
-    @property
-    def lum_per_h(self) -> np.ndarray:
-        return self._compat_species_grid().lum_per_h
 
-    @property
-    def tau(self) -> np.ndarray:
-        return self._compat_species_grid().tau
-
-    @property
-    def tau_dust(self) -> np.ndarray:
-        return self._compat_species_grid().tau_dust
-
-    @property
-    def tex(self) -> np.ndarray:
-        return self._compat_species_grid().tex
-
-    @property
-    def frequency(self) -> np.ndarray:
-        return self._compat_species_grid().freq
 
 
 CO_ABUNDANCE = 8.0e-9
@@ -385,8 +401,8 @@ def calculate_single_despotic_point(
                 converge = cell.setChemEq(
                     network=chem_network,
                     tol=1e-6, 
-                    maxTime=1e16,
-                    maxTempIter=50,
+                    maxTime=1e26,
+                    maxTempIter=500,
                     evolveTemp="iterateDust",
                     verbose=True,
                 )
@@ -836,6 +852,35 @@ def compute_average(
     )
 
 
+def ensure_species_fields(
+    field_map: dict[str, dict[str, np.ndarray]],
+    species: str,
+    shape: tuple[int, ...],
+) -> dict[str, np.ndarray]:
+    arrays = field_map.get(species)
+    if arrays is None:
+        arrays = {field: np.full(shape, np.nan, dtype=float) for field in LINE_RESULT_FIELDS}
+        field_map[species] = arrays
+    return arrays
+
+
+def select_indices(
+    values: np.ndarray,
+    *,
+    index_span: tuple[int, int] | None = None,
+    value_range: tuple[float, float] | None = None,
+) -> np.ndarray:
+    if index_span is not None:
+        start, end = index_span
+        start = max(start, 0)
+        end = min(end, values.size)
+        return np.arange(start, end)
+    if value_range is not None:
+        low, high = value_range
+        return np.where((values >= low) & (values <= high))[0]
+    return np.arange(values.size)
+
+
 
 
 __all__ = [
@@ -848,5 +893,7 @@ __all__ = [
     "make_temperature_interpolator",
     "refine_table",
     "fill_missing_values",
-    "compute_average"
+    "compute_average",
+    "ensure_species_fields",
+    "select_indices",
 ]

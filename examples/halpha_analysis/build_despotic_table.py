@@ -16,9 +16,7 @@ from matplotlib.colors import LogNorm
 from scipy.interpolate import griddata
 
 from quokka2s.despotic_tables import (
-    AttemptRecord,
     DespoticTable,
-    LineLumResult,
     LogGrid,
     SpeciesLineGrid,
     build_table,
@@ -39,7 +37,7 @@ from quokka2s.despotic_tables import (
 # N_H_RANGE = (1e1, 1e5)
 # COL_DEN_RANGE = (1e20, 1e23)
 
-N_H_RANGE = (1e1, 1e5)
+N_H_RANGE = (1e-4, 1e5)
 COL_DEN_RANGE = (1e18, 1e24)
 
 
@@ -58,15 +56,6 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_SPECIES = "CO"
 LINE_FIELD_NAMES = tuple(field.name for field in fields(SpeciesLineGrid))
-NAN_LINE_RESULT = LineLumResult(
-    int_tb=float("nan"),
-    int_intensity=float("nan"),
-    lum_per_h=float("nan"),
-    tau=float("nan"),
-    tau_dust=float("nan"),
-    tex=float("nan"),
-    freq=float("nan"),
-)
 
 
 def configure_logging(log_path: Path) -> None:
@@ -98,20 +87,6 @@ def configure_logging(log_path: Path) -> None:
     else:
         warnings.simplefilter("ignore", TqdmExperimentalWarning)
 
-
-def _select_species(table: DespoticTable, species: str = DEFAULT_OUTPUT_SPECIES) -> tuple[str, SpeciesLineGrid]:
-    """Return the requested species grid, falling back to the table default."""
-    if species in table.species_data:
-        return species, table.get_species_grid(species)
-
-    fallback = table.primary_species
-    if species != fallback:
-        LOGGER.warning(
-            "Requested species '%s' unavailable; falling back to '%s'.",
-            species,
-            fallback,
-        )
-    return fallback, table.get_species_grid(fallback)
 
 
 
@@ -277,7 +252,7 @@ def refine_same_resolution(table: DespoticTable, repeat_equilibrium: int = 0,
                            round_digits: int | None = None,
                            n_jobs: int = -1,
                            reuse_failed_tg: bool = False) -> DespoticTable:
-    _, grid = _select_species(table)
+    _, grid = table.require_species(DEFAULT_OUTPUT_SPECIES)
     points = grid.int_tb.shape[0]
     LOGGER.info("Refining temperature guesses on existing %dx%d grid", points, points)
 
@@ -478,7 +453,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         # # Plot Table
         # fine_plot_path = OUTPUT_DIR / f"co_int_TB_{tag}_fine.png"
         # plot_table(
-        #     refined_table.co_int_tb,
         #     str(fine_plot_path),
         #     f"DESPOTIC Lookup Table ({tag} refined)",
         # )
