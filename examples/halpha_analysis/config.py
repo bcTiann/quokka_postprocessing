@@ -5,6 +5,7 @@ from yt.units import K, mp, kb, mh, planck_constant, cm, m, s, g, erg
 
 # --- Input/Output ---
 YT_DATASET_PATH = "~/quokka_postprocessing/plt01000"
+YT_DATASET_PATH = "~/quokka_postprocessing/examples/halpha_analysis/plt263168"
 OUTPUT_DIR = "plots/"
 
 # --- Physics Parameters / Model Assumptions ---

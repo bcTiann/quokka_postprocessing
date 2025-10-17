@@ -26,7 +26,7 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 99982648.24802746
+cell.Tg = 1.24802746
 cell.nH = 1e-6
 # cell.nH = 3206.2671377973843
 cell.colDen = 1e+23

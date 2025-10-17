@@ -65,11 +65,10 @@ def load_table(path: str) -> DespoticTable:
         col_density_values=data["col_density"],
         emitter_abundances={"CO": float("nan")},
     )
+
 axis_map = {'x': 0, 'y': 1, 'z': 2}
 proj_axis_idx = axis_map[cfg.PROJECTION_AXIS]
-factor = 1
-mid_z = 256//factor//2
-mid_x = 128//factor//2
+
 ds = yt.load(cfg.YT_DATASET_PATH)
 phys.add_all_fields(ds)
 provider = q2s.YTDataProvider(ds)
@@ -89,7 +88,10 @@ dz_projection = dz_3d.sum(axis=0)
 dv_3d = dx_3d * dy_3d * dz_3d
 ################################################################
 
-
+factor = 1
+nx, ny, nz = dy_3d.shape
+mid_z = nz//factor//2
+mid_x = nx//factor//2
 
 # ================= DEBUGGING BLOCK =================
 print("\n--- DEBUGGING CELL VOLUME ---")
@@ -140,6 +142,7 @@ m_H = mh.in_cgs()
 density_3d, density_3d_extent = provider.get_cubic_box(
     field=('gas', 'density')
 )
+
 density_3d = provider.downsample_3d_array(density_3d, factor=factor)
 ##################################
 n_H_3d = (density_3d * X_H) / m_H
@@ -195,7 +198,7 @@ print(f"Nx_p.units = {Nx_p.units}")
 
 average_N_3d = compute_average(
     [Nx_p, Ny_p, Nz_p, Nx_n, Ny_n, Nz_n],
-    method="mean",
+    method="harmonic",
 )
 
 
@@ -271,43 +274,86 @@ plt.savefig("plots/colDen_slice_cgs.png", dpi=600, bbox_inches="tight")
 
 
 ######################### Load table #######################
-table = load_table("output_tables_reuseTg/table_50x50_fixed.npz")
+table = load_table("output_tables_2species/table_100x100_fixed.npz")
+target_species = "CO" 
+species_grid = table.get_species_grid(target_species)
+
 log_nH_grid = np.log10(table.nH_values)
 log_col_grid = np.log10(table.col_density_values)
-log_lumPerH = np.log10(table.lum_per_h)
+log_lumPerH = np.log10(species_grid.lum_per_h)
 log_lumPerH_interpolator = RectBivariateSpline(log_nH_grid, log_col_grid, log_lumPerH)
 ################################################################
 
 nH_cgs = n_H_3d.in_cgs().to_ndarray()
 colDen_cgs = average_N_3d.in_cgs().to_ndarray()
 
-log_nH_vals = np.log10(nH_cgs)
-log_col_vals = np.log10(colDen_cgs)
+
+valid_nH = (nH_cgs >= table.nH_values.min()) & (nH_cgs <= table.nH_values.max())
+valid_col = (colDen_cgs >= species_grid.col_density_values.min()) & (colDen_cgs <= species_grid.col_density_values.max())
+valid_mask = valid_nH & valid_col
+
+clipped_nH = np.clip(nH_cgs, table.nH_values.min(), table.nH_values.max())
+clipped_col = np.clip(colDen_cgs, species_grid.col_density_values.min(), species_grid.col_density_values.max())
+log_nH_vals = np.log10(clipped_nH)
+log_col_vals = np.log10(clipped_col)
 
 
-############
-# Restric each log(nH) in the tables avaliable values
-log_nH_vals = np.clip(log_nH_vals, log_nH_grid[0], log_nH_grid[-1])
 
-# Restric each log(colDen) in the tables avaliable values
-log_col_vals = np.clip(log_col_vals, log_col_grid[0], log_col_grid[-1])
-# so that the interplation won't use outside table value which is not stable
-#############
+# log_nH_vals = np.log10(nH_cgs)
+# log_col_vals = np.log10(colDen_cgs)
+
+
+# ############
+# # Restric each log(nH) in the tables avaliable values
+# log_nH_vals = np.clip(log_nH_vals, log_nH_grid[0], log_nH_grid[-1])
+
+# # Restric each log(colDen) in the tables avaliable values
+# log_col_vals = np.clip(log_col_vals, log_col_grid[0], log_col_grid[-1])
+# # so that the interplation won't use outside table value which is not stable
+# #############
 
 
 # ravel --> flatten the 3D array to 1D
 log_lumPerH_3d = log_lumPerH_interpolator.ev(log_nH_vals.ravel(), log_col_vals.ravel())
 log_lumPerH_3d = log_lumPerH_3d.reshape(nH_cgs.shape)
+
 lumPerH_3d = np.power(10.0, log_lumPerH_3d) # erg s^-1 H^-1
+lumPerH_3d[~valid_mask] = np.nan
 
 
-
+# Calculate lum from lumPerH_3d * n_H_3d * dv_3d
 lum = lumPerH_3d * dv_3d.in_cgs().to_ndarray() * n_H_3d.in_cgs().to_ndarray() # (erg s^-1 H^-1) * cm^3 * (H * cm^-3) 
+# Set invalid grid to np.nan
+lum[~valid_mask] = np.nan
+
+
+# convert to YTArray
 lum_per_H_yt = yt.YTArray(lumPerH_3d, "erg/s")
 lum = yt.YTArray(lum, "erg/s")
 
-lum_slice = lum[mid_x, :, : ]
+##################### Slice Plot ##################### 
+# lum_slice = lum[mid_x, :, : ]
+lum_slice = np.ma.masked_where(~valid_mask[mid_x, :, :], lum[mid_x, :, :])
 
+fig, ax = plt.subplots(figsize=(8, 6))
+cmap = plt.cm.get_cmap("viridis").copy()
+cmap.set_bad("lightgray", alpha=0.7)
+image = ax.imshow(lum_slice.T,
+                  extent=dx_3d_extent['x'],
+                  origin='lower',
+                  cmap=cmap,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"Luminosity ({lum.units})")
+plt.savefig('plots/luminosity_CO_xSlice.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_xSlice'")
+plt.show()
+
+################################################# 
+
+
+##################### Projection Plot ##################### 
 lum_x_projection = lum.sum(axis=0)
 lum_z_projection = lum.sum(axis=2)
 
