@@ -498,6 +498,18 @@ def calculate_single_despotic_point(
 
             last_final_tg = fallback_tg
             line_results = _empty_line_results(species_order)
+            if fallback_cell is not None:
+                recovered_results: dict[str, LineLumResult] = {}
+                for species in species_order:
+                    try:
+                        stdout_buffer = io.StringIO()
+                        with contextlib.redirect_stdout(stdout_buffer):
+                            transitions = fallback_cell.lineLum(species)
+                        _log_despotic_stdout(stdout_buffer.getvalue())
+                        recovered_results[species] = _extract_line_result(transitions)
+                    except Exception:
+                        recovered_results[species] = _nan_line_result()
+                line_results = recovered_results
             last_line_results = dict(line_results)
             last_residual_trace = tuple(residual_trace_run)
             last_temp_converged = temp_converged_run
