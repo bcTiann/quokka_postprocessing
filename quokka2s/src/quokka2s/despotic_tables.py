@@ -234,7 +234,7 @@ DEFAULT_EMITTER_ABUNDANCES: Mapping[str, float] = MappingProxyType(
     {"CO": CO_ABUNDANCE, "C+": CP_ABUNDANCE}
 )
 
-CO_INT_THRESHOLD = 1.0e-8
+
 
 LINE_RESULT_FIELDS: Tuple[str, ...] = (
     "int_tb",
@@ -411,12 +411,13 @@ def calculate_single_despotic_point(
 
             residual_trace_run: list[float] = []
             stdout_buffer = io.StringIO()
+            cell.setTempEq()
             with contextlib.redirect_stdout(stdout_buffer):
                 converge = cell.setChemEq(
                     network=chem_network,
                     tol=1e-6, 
-                    maxTime=1e26,
-                    maxTempIter=500,
+                    maxTime=1e30,
+                    maxTempIter=1000,
                     evolveTemp="iterateDust",
                     verbose=True,
                 )

@@ -227,6 +227,7 @@ def build_table_at_resolution(points: int,
             repeat_equilibrium=repeat_equilibrium,
             log_failures=True,
             reuse_failed_tg=reuse_failed_tg,
+            reuse_max_insertions=3
         )
 
     interpolator = make_temperature_interpolator(

@@ -26,10 +26,10 @@ cell = cloud()
 # cell.colDen = 4.642e+18
 
 
-cell.Tg = 1000.132
-cell.nH = 0.23713737056616552
+cell.Tg = 4082
+cell.nH = 562.341325190349
 # cell.nH = 3206.2671377973843
-cell.colDen = 5.623413251903491e+22
+cell.colDen = 1.7782794100389228e+23
 
 
 co_line_map = []
@@ -103,13 +103,30 @@ while guess_queue:
     current_guess = guess_queue.pop(0)
     cell.Tg = current_guess
     attempt_start = time.time()
-    converged = cell.setChemEq(
-        network=NL99,
-        evolveTemp="iterate",
-        tol=1e-6,
-        maxTime=1e25,
-        maxTempIter=300,
-    )
+    
+    stages = [
+        {"maxTime": 1e16, "maxTempIter": 50},
+        {"maxTime": 1e17, "maxTempIter": 100},
+        {"maxTime": 1e18, "maxTempIter": 200},
+        {"maxTime": 1e19, "maxTempIter": 400},
+    ]
+    converged = False
+    last_stage = stages[0]
+    for stage_idx, stage in enumerate(stages, start=1):
+        last_stage = stage
+        converged = cell.setChemEq(
+            network=NL99,
+            evolveTemp="iterate",
+            tol=1e-6,
+            maxTime=stage["maxTime"],
+            maxTempIter=stage["maxTempIter"],
+        )
+        print(
+            f"    stage {stage_idx}: maxTime={stage['maxTime']:.1e}, "
+            f"maxTempIter={stage['maxTempIter']} -> converged={converged}"
+        )
+        if converged:
+            break
     duration = time.time() - attempt_start
     final_Tg = cell.Tg
     attempt_log.append(
