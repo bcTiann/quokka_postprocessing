@@ -27,8 +27,8 @@ from quokka2s.despotic_tables import (
 from despotic.chemistry import NL99, NL99_GC, GOW
 from build_despotic_table import plot_table, TG_GUESSES, save_table
 
-linear_part = np.linspace(1.0, 100.0, 30)  # 例如 1–100 取 30 个点
-log_part = np.logspace(np.log10(100.0), np.log10(10000.0), 20)
+linear_part = np.linspace(1.0, 100.0, 1)  # 例如 1–100 取 30 个点
+log_part = np.logspace(np.log10(1.0), np.log10(1000000.0), 10)
 
 TG_GUESSES = np.concatenate([linear_part, log_part]).tolist()
 # 如需去重 + 排序，可选：

@@ -416,7 +416,7 @@ def calculate_single_despotic_point(
                 converge = cell.setChemEq(
                     network=chem_network,
                     tol=1e-6, 
-                    maxTime=1e30,
+                    maxTime=1e20,
                     maxTempIter=1000,
                     evolveTemp="iterateDust",
                     verbose=True,
