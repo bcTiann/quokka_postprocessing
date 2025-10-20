@@ -425,20 +425,34 @@ table_interp_mask = np.isfinite(log_lumPerH_3d)
 lumPerH_3d = np.power(10.0, log_lumPerH_3d)
 
 if raw_log_interp is not None:
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log_nH_all = np.log10(nH_cgs)
-        log_col_all = np.log10(colDen_cgs)
+
+    log_nH_all = np.log10(nH_cgs)
+    log_col_all = np.log10(colDen_cgs)
+    # get raw continous table ( table is not filled! )
     raw_log_values = raw_log_interp(log_nH_all, log_col_all)
-    raw_log_values = np.asarray(raw_log_values)
-    sampled_points = np.count_nonzero(valid_mask)
-    raw_nan_mask = valid_mask & ~np.isfinite(raw_log_values)
+    raw_log_values = np.asarray(raw_log_values) # convert input to ndarray
+    sampled_points = raw_log_values.size
+
+    # count how many points is nan
+    raw_nan_mask_any = ~np.isfinite(raw_log_values)
+    raw_nan_count_any = np.count_nonzero(raw_nan_mask_any)
+
+    raw_nan_mask = valid_mask & raw_nan_mask_any
     raw_nan_count = np.count_nonzero(raw_nan_mask)
-    if sampled_points > 0:
-        coverage_pct = 100.0 * (sampled_points - raw_nan_count) / sampled_points
+
+    print(
+        f"[DESPOTIC] Simulation voxels mapped to raw table: {sampled_points}; "
+        f"original NaN hits (any range): {raw_nan_count_any} "
+        f"({raw_nan_count_any / sampled_points:.3%})."
+    )
+
+    sampled_in_bounds = np.count_nonzero(valid_mask)
+    if sampled_in_bounds > 0:
+        coverage_pct = 100.0 * (sampled_in_bounds - raw_nan_count) / sampled_in_bounds
         print(
-            f"[DESPOTIC] Simulation voxels within table bounds: {sampled_points}"
-            f"; falling into original NaN cells: {raw_nan_count}"
-            f" ({raw_nan_count / sampled_points:.3%})."
+            f"[DESPOTIC] Within table bounds: {sampled_in_bounds}; "
+            f"original NaN hits: {raw_nan_count} "
+            f"({raw_nan_count / sampled_in_bounds:.3%})."
         )
         print(
             f"[DESPOTIC] Fraction retaining original table values (no fill): {coverage_pct:.2f}%."

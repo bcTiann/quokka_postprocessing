@@ -411,13 +411,13 @@ def calculate_single_despotic_point(
 
             residual_trace_run: list[float] = []
             stdout_buffer = io.StringIO()
-            cell.setTempEq()
+            # cell.setTempEq()
             with contextlib.redirect_stdout(stdout_buffer):
                 converge = cell.setChemEq(
                     network=chem_network,
                     tol=1e-6, 
-                    maxTime=1e20,
-                    maxTempIter=500,
+                    maxTime=1e18,
+                    maxTempIter=200,
                     evolveTemp="iterateDust",
                     verbose=True,
                 )
