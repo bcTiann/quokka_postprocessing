@@ -8,11 +8,12 @@ import quokka2s as q2s
 import physics_models as phys
 from matplotlib.colors import LogNorm
 import matplotlib.pyplot as plt
-from scipy.interpolate import RectBivariateSpline
 from matplotlib.ticker import LogLocator, LogFormatter
 from quokka2s.despotic_tables import DespoticTable, SpeciesLineGrid, compute_average
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 
-
+USE_INTERPOLATED_TABLE = True  # False: original table; True: interplated_table
+USE_BOUNDARY_CLAMP = True  # True: clip the simulation of nH, colDen to its boundary at avaibale table
 def load_table(path: str) -> DespoticTable:
     data = np.load(path, allow_pickle=True)
     if "species" in data and any(key.endswith("_grid") for key in data.keys()):
@@ -76,13 +77,13 @@ provider = q2s.YTDataProvider(ds)
 
 
 ###################### grid size ##############################
-dx_3d, dx_3d_extent = provider.get_cubic_box(('boxlib', 'dx'))
+dx_3d, dx_3d_extent = provider.get_slab_z(('boxlib', 'dx'))
 dx_projection = dx_3d.sum(axis=0)
 
-dy_3d, dy_3d_extent = provider.get_cubic_box(('boxlib', 'dy'))
+dy_3d, dy_3d_extent = provider.get_slab_z(('boxlib', 'dy'))
 dy_projection = dy_3d.sum(axis=0)
 
-dz_3d, dz_3d_extent = provider.get_cubic_box(('boxlib', 'dz'))
+dz_3d, dz_3d_extent = provider.get_slab_z(('boxlib', 'dz'))
 dz_projection = dz_3d.sum(axis=0)
 
 dv_3d = dx_3d * dy_3d * dz_3d
@@ -139,7 +140,7 @@ print("####################################")
 
 X_H = cfg.X_H
 m_H = mh.in_cgs()
-density_3d, density_3d_extent = provider.get_cubic_box(
+density_3d, density_3d_extent = provider.get_slab_z(
     field=('gas', 'density')
 )
 
@@ -162,13 +163,13 @@ print("####################################")
 # print(f"Downsampled data units: {n_H_3d.units}")
 # print(f"Downsampled data shape: {n_H_3d.shape}")
 
-dx_3d, dx_3d_extent = provider.get_cubic_box(
+dx_3d, dx_3d_extent = provider.get_slab_z(
     field=('boxlib', 'dx')
 )
-dy_3d, dy_3d_extent = provider.get_cubic_box(
+dy_3d, dy_3d_extent = provider.get_slab_z(
     field=('boxlib', 'dy')
 )
-dz_3d, dz_3d_extent = provider.get_cubic_box(
+dz_3d, dz_3d_extent = provider.get_slab_z(
     field=('boxlib', 'dz')
 )
 
@@ -177,19 +178,19 @@ dx_3d = provider.downsample_3d_array(dx_3d, factor=factor)
 dy_3d = provider.downsample_3d_array(dy_3d, factor=factor)
 dz_3d = provider.downsample_3d_array(dz_3d, factor=factor)
 
-temp_3d, temp_3d_extent = provider.get_cubic_box(
+temp_3d, temp_3d_extent = provider.get_slab_z(
     field=('gas', 'temperature')
 )
 temp_3d = provider.downsample_3d_array(temp_3d, factor=factor)
 print(f"temp_3d[:, :, 8] = {temp_3d.in_cgs()[:, :, mid_z]}")
 
-Nx_p = q2s.along_sight_cumulation(n_H_3d, axis="x", sign="+") * dx_3d
-Ny_p = q2s.along_sight_cumulation(n_H_3d, axis="y", sign="+") * dy_3d
-Nz_p = q2s.along_sight_cumulation(n_H_3d, axis="z", sign="+") * dz_3d
+Nx_p = q2s.along_sight_cumulation(n_H_3d * dx_3d, axis="x", sign="+") 
+Ny_p = q2s.along_sight_cumulation(n_H_3d * dy_3d, axis="y", sign="+") 
+Nz_p = q2s.along_sight_cumulation(n_H_3d * dz_3d, axis="z", sign="+")
 
-Nx_n = q2s.along_sight_cumulation(n_H_3d, axis="x", sign="-") * dx_3d
-Ny_n = q2s.along_sight_cumulation(n_H_3d, axis="y", sign="-") * dy_3d
-Nz_n = q2s.along_sight_cumulation(n_H_3d, axis="z", sign="-") * dz_3d
+Nx_n = q2s.along_sight_cumulation(n_H_3d * dx_3d, axis="x", sign="-")
+Ny_n = q2s.along_sight_cumulation(n_H_3d * dy_3d, axis="y", sign="-")
+Nz_n = q2s.along_sight_cumulation(n_H_3d * dz_3d, axis="z", sign="-")
 
 
 print(f"Nx_p.shape = {Nx_p.shape}")
@@ -228,7 +229,7 @@ print(f"average_N_3d.units = {average_N_3d.units}")
 
 X_H = cfg.X_H
 m_H = mh.in_cgs()
-density_3d, density_3d_extent = provider.get_cubic_box(
+density_3d, density_3d_extent = provider.get_slab_z(
     field=('gas', 'density')
 )
 density_3d = provider.downsample_3d_array(density_3d, factor=factor)
@@ -241,6 +242,7 @@ colDen_slice = average_N_3d.in_cgs().to_ndarray()[mid_x, :, :]  # cm^-2
 
 # n_H (cm^-3)
 fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("nH slice x cgs")
 im = ax.imshow(
     nH_slice.T,
     extent=density_3d_extent['x'],
@@ -252,11 +254,12 @@ cbar = fig.colorbar(im, ax=ax)
 cbar.set_label(f"{n_H_3d.in_cgs().units}")
 ax.set_xlabel("y (cm)")
 ax.set_ylabel("z (cm)")
-plt.savefig("plots/nH_slice_cgs.png", dpi=600, bbox_inches="tight")
-plt.close(fig)
+plt.savefig("plots/nH_slice_x_cgs.png", dpi=600, bbox_inches="tight")
+
 
 # 柱密度 N_H (cm^-2)
 fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("colDen slice x cgs")
 im = ax.imshow(
     colDen_slice.T,
     extent=density_3d_extent['x'],
@@ -268,35 +271,200 @@ cbar = fig.colorbar(im, ax=ax)
 cbar.set_label(f"{average_N_3d.in_cgs().units}")
 ax.set_xlabel("y (cm)")
 ax.set_ylabel("z (cm)")
-plt.savefig("plots/colDen_slice_cgs.png", dpi=600, bbox_inches="tight")
+plt.savefig("plots/colDen_slice_x_cgs.png", dpi=600, bbox_inches="tight")
 
 
 
 
 ######################### Load table #######################
-table = load_table("output_tables_2species/table_100x100_fixed.npz")
+table = load_table("output_tables_Oct18/table_50x50_fixed.npz")
 target_species = "CO" 
 species_grid = table.get_species_grid(target_species)
 
-log_nH_grid = np.log10(table.nH_values)
-log_col_grid = np.log10(table.col_density_values)
-log_lumPerH = np.log10(species_grid.lum_per_h)
-log_lumPerH_interpolator = RectBivariateSpline(log_nH_grid, log_col_grid, log_lumPerH)
-################################################################
+raw_log_interp = None
+if not USE_INTERPOLATED_TABLE:
+    log_nH_grid = np.log10(table.nH_values)
+    log_col_grid = np.log10(table.col_density_values)
 
+    log_nH_mesh, log_col_mesh = np.meshgrid(
+        log_nH_grid, log_col_grid, indexing="ij"
+    )
+
+
+    lumPerH_grid = species_grid.lum_per_h
+    table_valid_mask = np.isfinite(lumPerH_grid)
+    log_lumPerH = np.zeros_like(lumPerH_grid, dtype=float)
+    log_lumPerH[table_valid_mask] = np.log10(lumPerH_grid[table_valid_mask])
+
+    interp_points = np.column_stack((
+        log_nH_mesh[table_valid_mask],
+        log_col_mesh[table_valid_mask],
+    ))
+
+    interp_values = log_lumPerH[table_valid_mask]
+    log_lumPerH_interp = LinearNDInterpolator(
+        interp_points,
+        interp_values,
+        fill_value=np.nan,
+    )
+    raw_log_interp = log_lumPerH_interp
+
+else:
+    lumPerH_grid = species_grid.lum_per_h
+    table_mask = np.isfinite(lumPerH_grid)
+    log_nH_grid = np.log10(table.nH_values)
+    log_col_grid = np.log10(table.col_density_values)
+    log_nH_mesh, log_col_mesh = np.meshgrid(
+        log_nH_grid, log_col_grid, indexing="ij"
+    )
+    log_lumPerH_grid = np.full_like(lumPerH_grid, np.nan, dtype=float)
+    log_lumPerH_grid[table_mask] = np.log10(lumPerH_grid[table_mask])
+
+    interp_points = np.column_stack((
+        (log_nH_mesh[table_mask], log_col_mesh[table_mask])
+    ))
+    interp_values = log_lumPerH_grid[table_mask]
+
+    # table_mask is all valid index in the original table
+    # linear interp for points in interp_points -- (log_nH_mesh[table_mask], log_col_mesh[table_mask])
+    # if points not in interp_points, then fill nan to it!
+    # so linear_interp:  only has valid infomation in the original table!
+    linear_interp = LinearNDInterpolator(interp_points, interp_values, fill_value=np.nan) 
+
+    # nearest_interp: this is filled for thoes points which are not in interp_points,
+    nearest_interp = NearestNDInterpolator(interp_points, interp_values)
+
+    log_lumPerH_filled = linear_interp(log_nH_mesh, log_col_mesh)
+    nan_after_linear = ~np.isfinite(log_lumPerH_filled)
+    if np.any(nan_after_linear):
+        log_lumPerH_filled[nan_after_linear] = nearest_interp(
+            log_nH_mesh[nan_after_linear],
+            log_col_mesh[nan_after_linear],
+        )
+    lumPerH_filled = np.power(10.0, log_lumPerH_filled)
+    interpolated_mask = ~table_mask  # these are filled index
+    
+    # species_grid.lum_per_h = lumPerH_filled
+
+    # use filled log lumPerH value to interplate simulation data
+    interp_points_full = np.column_stack([
+        log_nH_mesh.ravel(),
+        log_col_mesh.ravel(),
+    ])
+    interp_values_full = log_lumPerH_filled.ravel()
+    log_lumPerH_interp = LinearNDInterpolator(
+        interp_points_full,
+        interp_values_full,
+        fill_value=np.nan,
+    )
+
+    ############# plot filled table ##############
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.set_title("CO lum_per_h table (filled)")
+    im = ax.imshow(
+        lumPerH_filled,
+        origin="lower",
+        cmap="viridis",
+        norm=LogNorm(),
+        extent=[table.col_density_values.min(), table.col_density_values.max(),
+                table.nH_values.min(), table.nH_values.max(),],
+        aspect="auto",
+    )
+    # grey for filled region
+    overlay = np.ma.masked_where(~interpolated_mask, interpolated_mask)
+    ax.imshow(
+        overlay,
+        origin="lower",
+        extent=[table.col_density_values.min(), table.col_density_values.max(),
+                table.nH_values.min(), table.nH_values.max(),],
+        cmap=plt.cm.Greys,
+        alpha=0.3,
+        aspect="auto",
+    )
+
+    ax.set_xlabel("n_H")
+    ax.set_ylabel("Column density")
+    fig.colorbar(im, ax=ax, label="lum_per_h (erg/s per H)")
+    fig.savefig("plots/table_CO_lum_per_h_filled.png", dpi=300, bbox_inches="tight")
+
+    raw_log_interp = linear_interp
+
+            
+
+################################################################
+# nH, colDens from simulation
 nH_cgs = n_H_3d.in_cgs().to_ndarray()
 colDen_cgs = average_N_3d.in_cgs().to_ndarray()
 
+print("=" * 50)
+print(f"nH_cgs min: {nH_cgs.min():.3e}, max: {nH_cgs.max():.3e}")
+print(f"colDen_cgs min: {colDen_cgs.min():.3e}, max: {colDen_cgs.max():.3e}")
+print("=" * 50)
 
 valid_nH = (nH_cgs >= table.nH_values.min()) & (nH_cgs <= table.nH_values.max())
-valid_col = (colDen_cgs >= species_grid.col_density_values.min()) & (colDen_cgs <= species_grid.col_density_values.max())
+valid_col = (colDen_cgs >= table.col_density_values.min()) & (colDen_cgs <= table.col_density_values.max())
 valid_mask = valid_nH & valid_col
 
-clipped_nH = np.clip(nH_cgs, table.nH_values.min(), table.nH_values.max())
-clipped_col = np.clip(colDen_cgs, species_grid.col_density_values.min(), species_grid.col_density_values.max())
-log_nH_vals = np.log10(clipped_nH)
-log_col_vals = np.log10(clipped_col)
+if USE_BOUNDARY_CLAMP:
+    clipped_nH = np.clip(nH_cgs, table.nH_values.min(), table.nH_values.max())
+    clipped_col = np.clip(colDen_cgs, table.col_density_values.min(), table.col_density_values.max())
+    log_nH_vals = np.log10(clipped_nH)
+    log_col_vals = np.log10(clipped_col)
 
+else:
+    log_nH_vals = np.log10(nH_cgs)
+    log_col_vals = np.log10(colDen_cgs)
+
+# derive simulation of 3d data
+log_lumPerH_3d = log_lumPerH_interp(
+    log_nH_vals.ravel(),# from simulation
+    log_col_vals.ravel(),# from simulation
+).reshape(nH_cgs.shape)
+table_interp_mask = np.isfinite(log_lumPerH_3d)
+
+lumPerH_3d = np.power(10.0, log_lumPerH_3d)
+
+if raw_log_interp is not None:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_nH_all = np.log10(nH_cgs)
+        log_col_all = np.log10(colDen_cgs)
+    raw_log_values = raw_log_interp(log_nH_all, log_col_all)
+    raw_log_values = np.asarray(raw_log_values)
+    sampled_points = np.count_nonzero(valid_mask)
+    raw_nan_mask = valid_mask & ~np.isfinite(raw_log_values)
+    raw_nan_count = np.count_nonzero(raw_nan_mask)
+    if sampled_points > 0:
+        coverage_pct = 100.0 * (sampled_points - raw_nan_count) / sampled_points
+        print(
+            f"[DESPOTIC] Simulation voxels within table bounds: {sampled_points}"
+            f"; falling into original NaN cells: {raw_nan_count}"
+            f" ({raw_nan_count / sampled_points:.3%})."
+        )
+        print(
+            f"[DESPOTIC] Fraction retaining original table values (no fill): {coverage_pct:.2f}%."
+        )
+else:
+    raw_log_values = np.full_like(log_lumPerH_3d, np.nan)
+strict_mask = valid_mask & table_interp_mask & np.isfinite(raw_log_values)
+
+if USE_BOUNDARY_CLAMP:
+    combined_mask = table_interp_mask
+else:
+    combined_mask = valid_mask & table_interp_mask
+
+
+lumPerH_3d[~combined_mask] = np.nan
+lum = (
+    lumPerH_3d
+    * dv_3d.in_cgs().to_ndarray()
+    * n_H_3d.in_cgs().to_ndarray()
+)
+lum[~combined_mask] = np.nan
+
+lum_loose = np.nan_to_num(lum, copy=True, nan=0.0)
+
+lum_strict = lum.copy()
+lum_strict[~strict_mask] = np.nan
 
 
 # log_nH_vals = np.log10(nH_cgs)
@@ -313,32 +481,22 @@ log_col_vals = np.log10(clipped_col)
 # #############
 
 
-# ravel --> flatten the 3D array to 1D
-log_lumPerH_3d = log_lumPerH_interpolator.ev(log_nH_vals.ravel(), log_col_vals.ravel())
-log_lumPerH_3d = log_lumPerH_3d.reshape(nH_cgs.shape)
-
-lumPerH_3d = np.power(10.0, log_lumPerH_3d) # erg s^-1 H^-1
-lumPerH_3d[~valid_mask] = np.nan
-
-
-# Calculate lum from lumPerH_3d * n_H_3d * dv_3d
-lum = lumPerH_3d * dv_3d.in_cgs().to_ndarray() * n_H_3d.in_cgs().to_ndarray() # (erg s^-1 H^-1) * cm^3 * (H * cm^-3) 
-# Set invalid grid to np.nan
-lum[~valid_mask] = np.nan
-
-
 # convert to YTArray
-lum_per_H_yt = yt.YTArray(lumPerH_3d, "erg/s")
+lumPerH_3d_yt = yt.YTArray(lumPerH_3d, "erg/s")
 lum = yt.YTArray(lum, "erg/s")
+lum_loose = yt.YTArray(lum_loose, "erg/s")
+lum_strict = yt.YTArray(lum_strict, "erg/s")
 
 ##################### Slice Plot ##################### 
-# lum_slice = lum[mid_x, :, : ]
-lum_slice = np.ma.masked_where(~valid_mask[mid_x, :, :], lum[mid_x, :, :])
+lum_slice = lum[mid_x, :, : ]
+masked_lum_slice = np.ma.masked_where(~combined_mask[mid_x, :, :], lum[mid_x, :, :])
+
 
 fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity x Slice")
 cmap = plt.cm.get_cmap("viridis").copy()
 cmap.set_bad("lightgray", alpha=0.7)
-image = ax.imshow(lum_slice.T,
+image = ax.imshow(masked_lum_slice.T,
                   extent=dx_3d_extent['x'],
                   origin='lower',
                   cmap=cmap,
@@ -353,16 +511,72 @@ plt.show()
 ################################################# 
 
 
+lum_slice_strict = lum_strict[mid_x, :, :]
+masked_lum_slice_strict = np.ma.masked_where(
+    ~strict_mask[mid_x, :, :],
+    lum_slice_strict,
+)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity x Slice (masked)")
+cmap_strict = plt.cm.get_cmap("viridis").copy()
+cmap_strict.set_bad("lightgray", alpha=0.7)
+image = ax.imshow(masked_lum_slice_strict.T,
+                  extent=dx_3d_extent['x'],
+                  origin='lower',
+                  cmap=cmap_strict,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"Luminosity ({lum_strict.units})")
+plt.savefig('plots/luminosity_CO_xSlice_masked.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_xSlice_masked'")
+plt.show()
+
+################################################# 
+
+
+lum_slice_loose = lum_loose[mid_x, :, :].to_ndarray()
+masked_lum_slice_loose = np.ma.masked_less_equal(lum_slice_loose, 0.0)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity x Slice (loose)")
+cmap_loose = plt.cm.get_cmap("viridis").copy()
+cmap_loose.set_bad("lightgray", alpha=0.7)
+image = ax.imshow(masked_lum_slice_loose.T,
+                  extent=dx_3d_extent['x'],
+                  origin='lower',
+                  cmap=cmap_loose,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"Luminosity ({lum_loose.units})")
+plt.savefig('plots/luminosity_CO_xSlice_loose.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_xSlice_loose'")
+plt.show()
+
+################################################# 
+
+
 ##################### Projection Plot ##################### 
-lum_x_projection = lum.sum(axis=0)
-lum_z_projection = lum.sum(axis=2)
+# Sum while ignoring NaN, then mask columns/rows if ANY invalid voxel exists
+lum_x_projection = np.nansum(lum, axis=0)
+lum_x_valid = np.all(combined_mask, axis=0)
+masked_lum_x_projection = np.ma.masked_where(~lum_x_valid, lum_x_projection)
+
+lum_z_projection = np.nansum(lum, axis=2)
+lum_z_valid = np.all(combined_mask, axis=2)
+masked_lum_z_projection = np.ma.masked_where(~lum_z_valid, lum_z_projection)
 
 
 fig, ax = plt.subplots(figsize=(8, 6))
-image = ax.imshow(lum_x_projection.T,
+ax.set_title("CO Luminosity x Projection")
+proj_cmap = plt.cm.get_cmap("viridis").copy()
+proj_cmap.set_bad("lightgray", alpha=0.7)
+image = ax.imshow(masked_lum_x_projection.T,
                   extent=dx_3d_extent['x'],
                   origin='lower',
-                  cmap='viridis',
+                  cmap=proj_cmap,
                   norm=LogNorm())
 
 cbar = fig.colorbar(image, ax=ax)
@@ -372,16 +586,96 @@ print("figure saved as 'CO_luminosity_xProjection'")
 plt.show()
 
 fig, ax = plt.subplots(figsize=(8, 6))
-image = ax.imshow(lum_z_projection.T,
-                  extent=dx_3d_extent['x'],
+ax.set_title("CO Luminosity z Projection")
+image = ax.imshow(masked_lum_z_projection.T,
+                  extent=dx_3d_extent['z'],
                   origin='lower',
-                  cmap='viridis',
+                  cmap=proj_cmap,
                   norm=LogNorm())
 
 cbar = fig.colorbar(image, ax=ax)
 cbar.set_label(f"luminosity")
 plt.savefig('plots/luminosity_CO_zProjection.png', dpi=600, bbox_inches='tight')
 print("figure saved as 'CO_luminosity_zProjection'")
+plt.show()
+
+strict_lum_x_projection = np.nansum(lum_strict, axis=0)
+strict_lum_x_valid = np.all(strict_mask, axis=0)
+masked_lum_x_projection_strict = np.ma.masked_where(
+    ~strict_lum_x_valid,
+    strict_lum_x_projection,
+)
+
+strict_lum_z_projection = np.nansum(lum_strict, axis=2)
+strict_lum_z_valid = np.all(strict_mask, axis=2)
+masked_lum_z_projection_strict = np.ma.masked_where(
+    ~strict_lum_z_valid,
+    strict_lum_z_projection,
+)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity x Projection (masked)")
+proj_cmap_strict = plt.cm.get_cmap("viridis").copy()
+proj_cmap_strict.set_bad("lightgray", alpha=0.7)
+image = ax.imshow(masked_lum_x_projection_strict.T,
+                  extent=dx_3d_extent['x'],
+                  origin='lower',
+                  cmap=proj_cmap_strict,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"Luminosity ({lum_strict.units})")
+plt.savefig('plots/luminosity_CO_xProjection_masked.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_xProjection_masked'")
+plt.show()
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity z Projection (masked)")
+image = ax.imshow(masked_lum_z_projection_strict.T,
+                  extent=dx_3d_extent['z'],
+                  origin='lower',
+                  cmap=proj_cmap_strict,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"luminosity")
+plt.savefig('plots/luminosity_CO_zProjection_masked.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_zProjection_masked'")
+plt.show()
+
+lum_x_projection_loose = lum_loose.to_ndarray().sum(axis=0)
+lum_z_projection_loose = lum_loose.to_ndarray().sum(axis=2)
+masked_lum_x_projection_loose = np.ma.masked_less_equal(lum_x_projection_loose, 0.0)
+masked_lum_z_projection_loose = np.ma.masked_less_equal(lum_z_projection_loose, 0.0)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity x Projection (loose)")
+proj_cmap_loose = plt.cm.get_cmap("viridis").copy()
+proj_cmap_loose.set_bad("lightgray", alpha=0.7)
+image = ax.imshow(masked_lum_x_projection_loose.T,
+                  extent=dx_3d_extent['x'],
+                  origin='lower',
+                  cmap=proj_cmap_loose,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"Luminosity ({lum_loose.units})")
+plt.savefig('plots/luminosity_CO_xProjection_loose.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_xProjection_loose'")
+plt.show()
+
+fig, ax = plt.subplots(figsize=(8, 6))
+ax.set_title("CO Luminosity z Projection (loose)")
+image = ax.imshow(masked_lum_z_projection_loose.T,
+                  extent=dx_3d_extent['z'],
+                  origin='lower',
+                  cmap=proj_cmap_loose,
+                  norm=LogNorm())
+
+cbar = fig.colorbar(image, ax=ax)
+cbar.set_label(f"luminosity")
+plt.savefig('plots/luminosity_CO_zProjection_loose.png', dpi=600, bbox_inches='tight')
+print("figure saved as 'CO_luminosity_zProjection_loose'")
 plt.show()
 
 # fig, ax = plt.subplots(figsize=(8, 6))

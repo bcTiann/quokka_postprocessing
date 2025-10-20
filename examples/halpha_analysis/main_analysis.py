@@ -22,6 +22,7 @@ def main():
     os.makedirs(cfg.OUTPUT_DIR, exist_ok=True)
 
     # --- Initialize all possible result variables to None ---
+    rho_projection = None
     surface_brightness_no_dust = None
     surface_brightness_with_dust = None
     ratio_map = None
@@ -34,10 +35,10 @@ def main():
     # --- 2. Get Base 3D Data from Simulation ---
     # These are needed for both analyses, so we get them once.
     print("Retrieving 3D data from simulation...")
-    lum_3d, lum_3d_extent = provider.get_cubic_box(('gas', 'Halpha_luminosity'))
-    rho_3d, rho_3d_extent = provider.get_cubic_box(('gas', 'density'))
+    lum_3d, lum_3d_extent = provider.get_slab_z(('gas', 'Halpha_luminosity'))
+    rho_3d, rho_3d_extent = provider.get_slab_z(('gas', 'density'))
 
-    dx_3d, dx_3d_extent = provider.get_cubic_box(('boxlib', 'dx'))
+    dx_3d, dx_3d_extent = provider.get_slab_z(('boxlib', 'dx'))
     dx_projection = dx_3d.sum(axis=0)
 
    
@@ -48,17 +49,36 @@ def main():
     print("...3D data retrieval complete.")
     print("####################################")
 
-    q2s.create_plot(
-    data_2d=dx_projection.T.to_ndarray(), # Use the calculated ratio map
-    title="dx projection",
-    cbar_label="length of projected dx",
-    filename=os.path.join(cfg.OUTPUT_DIR, "dx_projection.png"),
-    extent=dx_3d_extent['x'],
-    xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
-    ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
-    norm=None,  # Use a LINEAR scale for the ratio map, not LogNorm!
-    camp='viridis_r' # Use a reversed colormap so dense areas are dark
-    )
+    # q2s.create_plot(
+    # data_2d=dx_projection.T.to_ndarray(), # Use the calculated ratio map
+    # title="dx projection",
+    # cbar_label="length of projected dx",
+    # filename=os.path.join(cfg.OUTPUT_DIR, "dx_projection.png"),
+    # extent=dx_3d_extent['x'],
+    # xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
+    # ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+    # norm=None,  # Use a LINEAR scale for the ratio map, not LogNorm!
+    # camp='viridis_r' # Use a reversed colormap so dense areas are dark
+    # )
+
+    # --- 2.5 . Run basic density plot ---
+    if cfg.ANALYSES["density"]["enabled"]:
+        print("\n--- Starting density plots ---")
+        params = cfg.ANALYSES["density"]
+        
+
+        rho_projection = rho_3d.sum(axis=proj_axis_idx)
+        # Plot the result
+        q2s.create_plot(
+            data_2d=rho_projection.T.to_ndarray(),
+            title=params['title'],
+            cbar_label=params['cbar_label'],
+            filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
+            extent=lum_3d_extent['x'],
+            xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})", 
+            ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+            norm=params['norm']
+        )
 
 
     # --- 3. Run "No Dust" Analysis ---
@@ -88,7 +108,7 @@ def main():
         params = cfg.ANALYSES["halpha_with_dust"]
         
         # Physics Calculation Steps
-        N_H_3d = q2s.calculate_cumulative_column_density(rho_3d, dx_3d, axis=proj_axis_idx, X_H=cfg.X_H)
+        N_H_3d = q2s.calculate_cumulative_column_density(rho_3d, dx_3d, axis=proj_axis_idx, X_H=cfg.X_H, sign="+")
         
         # ======================= DEBUG STARTS HERE =======================
         print(f"Column density of H (N_H_3d):")
@@ -213,10 +233,10 @@ def main():
 
         # --- 5b. 调用我们的新函数运行计算 ---
 
-        co_map_K_kms = q2s.run_despotic_on_map(
-            nH_map.to_ndarray(), 
-            Tg_map.to_ndarray(), 
-            colDen_map.to_ndarray()
+        co_map_K_kms, _ = q2s.run_despotic_on_map(
+            nH_map.to_ndarray(),
+            colDen_map.to_ndarray(),
+            Tg_map=Tg_map.to_ndarray()
         )
 
         # --- 5c. 可视化结果
@@ -242,32 +262,70 @@ def main():
     print("\n--- Generating combined multi-plot figure ---")
     
     # Create the list of dictionaries, one for each subplot
-    plots_info = []
+    subplot_infos = []
+    multiview_infos = []
+
+    if rho_projection is not None:
+        params = cfg.ANALYSES["density"]
+        subplot_infos.append({
+            'data': rho_projection.T.to_ndarray(),
+            'title': params['title'],
+            'cbar_label': params['cbar_label'],
+            'norm': params['norm'],
+        })
+        multiview_infos.append({
+            'data_top': rho_projection.T.to_ndarray(),
+            'label': params['cbar_label'],
+            'norm': params['norm'],
+            'cmap': 'viridis'
+        })
+        
     
     if surface_brightness_no_dust is not None:
         params = cfg.ANALYSES["halpha_no_dust"]
-        plots_info.append({
+        surface_brightness_no_dust.T.to_ndarray()
+        subplot_infos.append({
             'data': surface_brightness_no_dust.T.to_ndarray(),
             'title': params['title'],
             'cbar_label': params['cbar_label'],
             'norm': params['norm'],
         })
+        multiview_infos.append({
+            'data_top': surface_brightness_no_dust.T.to_ndarray(),
+            'label': params['cbar_label'],
+            'norm': params['norm'],
+            'cmap': 'viridis'
+        })
 
     if surface_brightness_with_dust is not None:
         params = cfg.ANALYSES["halpha_with_dust"]
-        plots_info.append({
+        subplot_infos.append({
             'data': surface_brightness_with_dust.T.to_ndarray(),
             'title': params['title'],
             'cbar_label': "Surface Brightness (erg/s/cm$^2$)", # Using a fixed label for consistency
             'norm': params['norm'],
         })
+        multiview_infos.append({
+            'data_top': surface_brightness_with_dust.T.to_ndarray(),
+            'label': "Surface Brightness (erg/s/cm$^2$)",
+            'norm': params['norm'],
+            'cmap': 'viridis'
+        })
 
     if ratio_map is not None:
-        plots_info.append({
-            'data': ratio_map.T,
+        ratio_array = ratio_map.T.to_ndarray()
+        subplot_infos.append({
+            'data': ratio_array,
             'title': "Dust Transmission Ratio",
             'cbar_label': "Fraction of Light Transmitted",
             'norm': None, # Linear scale for ratio map
+            'cmap': 'viridis',
+        })
+        multiview_infos.append({
+            'data_top': ratio_array,
+            'label': "Fraction of Light Transmitted",
+            'norm': None,
+            'cmap': 'viridis'
         })
 
     # Get the shared plot extent and labels
@@ -275,14 +333,45 @@ def main():
     xlabel = f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})"
     ylabel = f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})"
 
+
+
+
+
+# plot_multiview_grid(
+#     plots_info=plots_info,
+#     extent_top=extent_x,
+#     extent_bottom=extent_z,
+#     filename="multiview_figure_particles.png",
+#     units=units,
+#     particles_top=(px_top.to_ndarray(), py_top.to_ndarray()),
+#     particles_bottom=(px_bottom.to_ndarray(), py_bottom.to_ndarray()),
+#     column_spacing=0.18,
+#     row_spacing=0.04,
+#     particle_stride=1,
+#     show_particles_top=True,
+#     show_particles_bottom=False,
+# )
+    if multiview_infos:
+        q2s.plot_multiview_grid(
+            plots_info=multiview_infos,
+            extent_top=lum_3d_extent['x'],
+            filename=os.path.join(cfg.OUTPUT_DIR, "new_combined.png"),
+            units=cfg.FIGURE_UNITS,
+            include_bottom=False,
+            column_spacing=0.12,
+            colorbar_height_ratio=0.04,
+        )
+
+
     # Make the single call to the plotting function
-    q2s.create_horizontal_subplots(
-        plots_info=plots_info,
-        shared_extent=lum_3d_extent['x'],
-        shared_xlabel=xlabel,
-        shared_ylabel=ylabel,
-        filename=os.path.join(cfg.OUTPUT_DIR, "halpha_analysis_combined.png")
-    )
+    if subplot_infos:
+        q2s.create_horizontal_subplots(
+            plots_info=subplot_infos,
+            shared_extent=lum_3d_extent['x'],
+            shared_xlabel=xlabel,
+            shared_ylabel=ylabel,
+            filename=os.path.join(cfg.OUTPUT_DIR, "halpha_analysis_combined.png")
+        )
 
 
 if __name__ == '__main__':

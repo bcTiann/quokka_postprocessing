@@ -1,9 +1,10 @@
-# from plot_interface import YTDataProvider, create_plot, create_horizontal_subplots, plot_multiview_grid
 import yt
 from yt.units import mp, kb, mh 
 from matplotlib.colors import LogNorm
 import numpy as np
+# from plot_interface import YTDataProvider, create_plot, create_horizontal_subplots, plot_multiview_grid
 from quokka2s import *
+from quokka2s.utils.axes import axis_index
 
 # 1. define field: temperature
 def _temperature(field, data):
@@ -16,7 +17,7 @@ def _temperature(field, data):
     return temp
 
 # Load your simulation data
-ds = yt.load("plt01000") # Replace with your dataset file
+ds = yt.load("examples/halpha_analysis/plt263168") # Replace with your dataset file
 
 
 
@@ -40,8 +41,8 @@ extent_z = provider.get_plot_extent(axis='z', units=units)
 
 print("\nFetching particle data...")
 # Calculate the depth for particle selection (e.g., xx % of the domain width)
-depth_x_pc = ds.domain_width[provider._axis_map['x']].to(units).value / 20
-depth_z_pc = ds.domain_width[provider._axis_map['z']].to(units).value / 20
+depth_x_pc = ds.domain_width[axis_index('x')].to(units).value / 20
+depth_z_pc = ds.domain_width[axis_index('z')].to(units).value / 20
 
 # Get particles for the top row (x-slice)
 px_top, py_top = provider.get_particle_positions(axis='x', depth=depth_x_pc, units=units)
@@ -49,7 +50,6 @@ px_top, py_top = provider.get_particle_positions(axis='x', depth=depth_x_pc, uni
 # Get particles for the bottom row (z-slice)
 px_bottom, py_bottom = provider.get_particle_positions(axis='z', depth=depth_z_pc, units=units)
 print("...Particle data fetched.\n")
-
 
 print("\nFetching vector field data...")
 vec_field_top = provider.get_velocity_field(axis='x', downsample_factor=30, units=units)
@@ -65,12 +65,21 @@ column_density_x = provider.get_projection(field=('gas', 'density'), axis='x')
 column_density_z = provider.get_projection(field=('gas', 'density'), axis='z')
 
 # Plot 3. Density-weighted V_z along x-axis
-weighted_vz_x = provider.get_projection(field=('gas', 'four_velocity_z'), 
-                                                             weight_field=('gas', 'density'), 
-                                                             axis='x')
-weighted_vz_z = provider.get_projection(field=('gas', 'four_velocity_z'), 
-                                                             weight_field=('gas', 'density'), 
-                                                             axis='z')
+weighted_vz_x = provider.get_projection(field=('gas', 'velocity_z'), 
+                                        weight_field=('gas', 'density'), 
+                                        axis='x')
+
+weighted_vz_z = provider.get_projection(field=('gas', 'velocity_z'), 
+                                        weight_field=('gas', 'density'), 
+                                        axis='z')
+
+vz_x = provider.get_projection(field=('gas', 'velocity_z'), 
+                            #  weight_field=('gas', 'density'), 
+                                axis='x')
+
+vz_z = provider.get_projection(field=('gas', 'velocity_z'), 
+                            #  weight_field=('gas', 'density'), 
+                                axis='z')
 
 # Plot 4. Density-weighted Temperature slice along x-axis
 weighted_T_x = provider.get_projection(field=('gas', 'temperature'), 
@@ -99,8 +108,10 @@ plots_info = [
         'cmap': 'viridis',
     },
     {
+        # 'data_top': weighted_vz_x.to_ndarray(),
+        # 'data_bottom': weighted_vz_z.to_ndarray(),
         'data_top': weighted_vz_x.to_ndarray(),
-        'data_bottom': weighted_vz_z.to_ndarray(),
+        'data_bottom': weighted_vz_x.to_ndarray(),
         'label': f'Density Weighted $v_z$ ({weighted_vz_x.units})',
         'norm': None,
         'cmap': 'seismic',
@@ -123,7 +134,12 @@ plot_multiview_grid(
     filename="multiview_figure_particles.png",
     units=units,
     particles_top=(px_top.to_ndarray(), py_top.to_ndarray()),
-    particles_bottom=(px_bottom.to_ndarray(), py_bottom.to_ndarray())
+    particles_bottom=(px_bottom.to_ndarray(), py_bottom.to_ndarray()),
+    column_spacing=0.18,
+    row_spacing=0.04,
+    particle_stride=1,
+    show_particles_top=True,
+    show_particles_bottom=False,
 )
 
 

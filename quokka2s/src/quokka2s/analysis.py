@@ -8,6 +8,7 @@ from tqdm import tqdm
 from yt.units import K, mp, kb, mh, planck_constant, cm, m, s, g, erg
 
 from .despotic_tables import calculate_single_despotic_point
+from .utils.axes import axis_index
 
 
 def run_despotic_on_map(
@@ -202,10 +203,7 @@ def along_sight_cumulation(
     sign: str,
 ):
     """Cumulative sum along a requested axis and direction."""
-    axis_map = {"x": 0, "y": 1, "z": 2}
-    if axis not in axis_map:
-        raise ValueError("axis must be 'x', 'y', or 'z'")
-    axis = axis_map[axis]
+    axis = axis_index(axis)
 
     if sign == "+":
         return np.flip(np.cumsum(np.flip(data, axis=axis), axis=axis), axis=axis)
@@ -219,15 +217,16 @@ def along_sight_cumulation(
 def calculate_cumulative_column_density(
     density_3d: np.ndarray,
     dx_3d: np.ndarray,
-    axis: int,
+    axis: Union[str, int],
     X_H: float,
+    sign: str,
 ):
     """Calculates the cumulative hydrogen column density along a given axis."""
     m_H = mh.in_cgs()
     n_H_3d = (density_3d * X_H) / m_H
     N_H_cell_3d = n_H_3d * dx_3d
 
-    N_H_cumulative = along_sight_cumulation(N_H_cell_3d, axis=axis)
+    N_H_cumulative = along_sight_cumulation(N_H_cell_3d, axis=axis, sign=sign)
     return N_H_cumulative
 
 

@@ -37,10 +37,15 @@ from quokka2s.despotic_tables import (
 # N_H_RANGE = (1e1, 1e5)
 # COL_DEN_RANGE = (1e20, 1e23)
 
-N_H_RANGE = (1e-4, 1e5)
-COL_DEN_RANGE = (1e18, 1e24)
+## Most recent success range, Date: Oct 18
+# N_H_RANGE = (1e-4, 1e5)
+# COL_DEN_RANGE = (1e18, 1e24)
 
-
+# After loading the new QUOKKA simualtion, adjust the range to this
+# #nH_cgs min: 1.085e-05, max: 5.420e+03
+# colDen_cgs min: 3.088e+15, max: 1.488e+23
+N_H_RANGE = (1e-5, 1e5)
+COL_DEN_RANGE = (1e15, 1e24)
 
 TG_GUESSES = [5.12, 100.414, 1000.321]
 PLOT_DPI = 600

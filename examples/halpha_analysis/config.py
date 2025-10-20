@@ -4,7 +4,7 @@ from matplotlib.colors import LogNorm
 from yt.units import K, mp, kb, mh, planck_constant, cm, m, s, g, erg 
 
 # --- Input/Output ---
-YT_DATASET_PATH = "~/quokka_postprocessing/plt01000"
+# YT_DATASET_PATH = "~/quokka_postprocessing/plt01000"
 YT_DATASET_PATH = "~/quokka_postprocessing/examples/halpha_analysis/plt263168"
 OUTPUT_DIR = "plots/"
 
@@ -22,6 +22,13 @@ CMAP = 'viridis'
 # --- Analysis Tasks ---
 # Define which analyses to run and their parameters
 ANALYSES = {
+    "density": {
+        "title": "density projection along x axis",
+        "filename": "density.png",
+        "cbar_label": "density ($g/cm^{-3}$)",
+        "norm": LogNorm(),
+        "enabled": True
+    },
     "halpha_no_dust": {
         "title": "H-alpha Emission (No Dust)",
         "filename": "halpha_no_dust.png",
@@ -41,7 +48,7 @@ ANALYSES = {
         "filename": "co_despotic_map_(2).png",
         "cbar_label": "Integrated Brightness Temperature (K km/s)",
         "norm": None,  
-        "enabled": True
+        "enabled": False
     }
 }
 

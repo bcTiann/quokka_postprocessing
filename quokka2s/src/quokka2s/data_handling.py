@@ -4,10 +4,11 @@ import numpy as np
 from typing import Dict, List, Optional, Tuple, Union
 from unyt import unyt_array
 
+from .utils.axes import axis_index, axis_label
+
 class YTDataProvider:
     def __init__(self, ds):
         self.ds = ds
-        self._axis_map = {'x': 0, 'y': 1, 'z': 2, 0:'x', 1:'y', 2:'z'}
 
     def get_slice(self,
                   field: Tuple[str, str],
@@ -17,14 +18,14 @@ class YTDataProvider:
         """
         Get a slice of 2D YTNdarray for the specified field and axis.
         """
-        axis_str = self._axis_map[axis] if isinstance(axis, int) else axis
-        axis_index = self._axis_map[axis_str]
+        axis_str = axis_label(axis)
+        axis_idx = axis_index(axis)
 
         if coord is None:
-            coord = self.ds.domain_center[axis_index]
+            coord = self.ds.domain_center[axis_idx]
 
         full_domain_width = self.ds.domain_width
-        plane_axes = [i for i in range(3) if i != axis_index]
+        plane_axes = [i for i in range(3) if i != axis_idx]
         
         slice_width = full_domain_width[plane_axes[0]]
         slice_height = full_domain_width[plane_axes[1]]
@@ -195,7 +196,7 @@ class YTDataProvider:
         print(f"Defining a physical slab from {left_edge} to {right_edge}")
         
         pixel_widths = self.ds.domain_width / self.ds.domain_dimensions
-        dims_xy = self.ds.domain_dimensions[0:2] * (2**level)
+        dims_xy = self.ds.domain_dimensions[0:2]
 
         num_z_pixels = np.round(slab_width / pixel_widths[2]).astype(int)
 
@@ -275,11 +276,11 @@ class YTDataProvider:
         """
         Get a projection of 2D Numpy array for the specified field and axis.
         """
-        axis_str = self._axis_map[axis] if isinstance(axis, int) else axis
-        axis_index = self._axis_map[axis_str]
+        axis_str = axis_label(axis)
+        axis_idx = axis_index(axis)
         
         full_domain_width = self.ds.domain_width
-        plane_axes = [i for i in range(3) if i != axis_index]
+        plane_axes = [i for i in range(3) if i != axis_idx]
         
         proj_width = full_domain_width[plane_axes[0]]
         proj_height = full_domain_width[plane_axes[1]]
@@ -301,9 +302,8 @@ class YTDataProvider:
         """
         Get the physical extent of the plot for the specified axis.
         """
-        axis_str = self._axis_map[axis] if isinstance(axis, int) else axis
-        axis_index = self._axis_map[axis_str]
-        axes = [i for i in range(3) if i != axis_index]
+        axis_idx = axis_index(axis)
+        axes = [i for i in range(3) if i != axis_idx]
 
         horizon_min, horizen_max = self.ds.domain_left_edge.in_units(units)[axes[0]].value, self.ds.domain_right_edge.in_units(units)[axes[0]].value
         vertical_min, vertical_max = self.ds.domain_left_edge.in_units(units)[axes[1]].value, self.ds.domain_right_edge.in_units(units)[axes[1]].value
@@ -332,11 +332,10 @@ class YTDataProvider:
             A tuple of two NumPy arrays: (particle_x_coords, particle_y_coords) 
             for the plotting plane.
         """
-        axis_str = self._axis_map[axis] if isinstance(axis, int) else axis
-        axis_index = self._axis_map[axis_str]
+        axis_idx = axis_index(axis)
 
         if coord is None:
-            coord = self.ds.domain_center[axis_index].in_units(units).value
+            coord = self.ds.domain_center[axis_idx].in_units(units).value
 
 
         # 1. Define the slab boundaries
@@ -349,8 +348,8 @@ class YTDataProvider:
         right_edge = self.ds.domain_right_edge.copy()
 
         # Modify the edges along the slice axis to define the slab's thickness
-        left_edge[axis_index] = min_coord
-        right_edge[axis_index] = max_coord
+        left_edge[axis_idx] = min_coord
+        right_edge[axis_idx] = max_coord
         
         # Create the data object representing only the data within this box
         slab_particles = self.ds.box(left_edge, right_edge)
@@ -358,7 +357,7 @@ class YTDataProvider:
         # -----------------------------------------------
 
         # Determine the axes for the plot
-        plot_axes = [self._axis_map[i] for i in range(3) if i != axis_index]
+        plot_axes = [axis_label(i) for i in range(3) if i != axis_idx]
 
         # Get the particle positions for the plotting axes from the new slab object
         p_x = slab_particles[ptype, f'particle_position_{plot_axes[0]}'].in_units(units)
@@ -391,12 +390,11 @@ class YTDataProvider:
         Returns:
             A tuple of four 2D NumPy arrays: (X, Y, U, V)
         """
-        axis_str = self._axis_map[axis] if isinstance(axis, int) else axis
-        axis_index = self._axis_map[axis_str]
+        axis_idx = axis_index(axis)
 
         # Determine the axes for the plot and corresponding velocity components
-        plot_axes_indices = [i for i in range(3) if i != axis_index]
-        plot_axes_str = [self._axis_map[i] for i in plot_axes_indices]
+        plot_axes_indices = [i for i in range(3) if i != axis_idx]
+        plot_axes_str = [axis_label(i) for i in plot_axes_indices]
         
         vel_u_field = ('gas', f'velocity_{plot_axes_str[0]}')
         vel_v_field = ('gas', f'velocity_{plot_axes_str[1]}')
@@ -422,5 +420,3 @@ class YTDataProvider:
         
         # unyt_array
         return X_down, Y_down, U_down, V_down
-
-
