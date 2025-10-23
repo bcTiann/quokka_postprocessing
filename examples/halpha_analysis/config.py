@@ -23,28 +23,28 @@ CMAP = 'viridis'
 # Define which analyses to run and their parameters
 ANALYSES = {
     "density": {
-        "title": "density projection along x axis",
+        "title": "density projection along x",
         "filename": "density.png",
-        "cbar_label": "density ($g/cm^{-3}$)",
+        "cbar_label": "density ($g/cm^{3}$)",
         "norm": LogNorm(),
         "enabled": True
     },
     "halpha_no_dust": {
-        "title": "H-alpha Emission (No Dust)",
+        "title": "H-alpha (No Dust)",
         "filename": "halpha_no_dust.png",
         "cbar_label": "Surface Brightness (erg/s/cm$^2$)",
         "norm": LogNorm(),
         "enabled": True
     },
     "halpha_with_dust": {
-        "title": "H-alpha Emission (With Dust Absorption)",
+        "title": "H-alpha (Dust)",
         "filename": "halpha_with_dust.png",
-        "cbar_label": "Surface Brightness ({surface_brightness_with_dust.units})",
+        "cbar_label": "Surface Brightness (erg/s/cm$^2$)",
         "norm": LogNorm(),
         "enabled": True
     },
     "co_despotic": {
-        "title": "CO (J=1-0) Emission (DESPOTIC)",
+        "title": "CO (J=1-0) (DESPOTIC)",
         "filename": "co_despotic_map_(2).png",
         "cbar_label": "Integrated Brightness Temperature (K km/s)",
         "norm": None,  

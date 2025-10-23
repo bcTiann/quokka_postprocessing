@@ -41,7 +41,11 @@ def main():
     dx_3d, dx_3d_extent = provider.get_slab_z(('boxlib', 'dx'))
     dx_projection = dx_3d.sum(axis=0)
 
-   
+    plot_extent = provider.get_plot_extent(axis=cfg.PROJECTION_AXIS, units=cfg.FIGURE_UNITS)
+    xlabel = f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})"
+    ylabel = f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})"
+    top_ylabel_axis = 'XYZ'[proj_axis_idx-1]
+
     print("####################################")
     print(f"dx_3d.mean : {dx_3d.mean()}")
     print(f"dx_3d.var : {dx_3d.var()}")
@@ -74,9 +78,9 @@ def main():
             title=params['title'],
             cbar_label=params['cbar_label'],
             filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=lum_3d_extent['x'],
-            xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})", 
-            ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+            extent=plot_extent,
+            xlabel=xlabel, 
+            ylabel=ylabel,
             norm=params['norm']
         )
 
@@ -96,9 +100,9 @@ def main():
             title=params['title'],
             cbar_label=params['cbar_label'],
             filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=lum_3d_extent['x'],
-            xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})", # Clever way to get other axes
-            ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+            extent=plot_extent,
+            xlabel=xlabel, # Clever way to get other axes
+            ylabel=ylabel,
             norm=params['norm']
         )
 
@@ -143,9 +147,9 @@ def main():
             title=params['title'],
             cbar_label=params['cbar_label'],
             filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=lum_3d_extent['x'],
-            xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
-            ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+            extent=plot_extent,
+            xlabel=xlabel,
+            ylabel=ylabel,
             norm=params['norm']
         )
 
@@ -165,17 +169,15 @@ def main():
         # ratio_map = np.clip(ratio_map, 0, 1)
 
         # Get the plot extent again
-        plot_extent = provider.get_plot_extent(axis=cfg.PROJECTION_AXIS, units=cfg.FIGURE_UNITS)
-
         # Plot the ratio map
         q2s.create_plot(
             data_2d=ratio_map.T,  # Use the calculated ratio map
-            title="Dust Transmission (With Dust / Without Dust)",
+            title="Transmission (With Dust / Without Dust)",
             cbar_label="Fraction of Light Transmitted",
             filename=os.path.join(cfg.OUTPUT_DIR, "halpha_dust_ratio.png"),
-            extent=lum_3d_extent['x'],
-            xlabel=f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})",
-            ylabel=f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})",
+            extent=plot_extent,
+            xlabel=xlabel,
+            ylabel=ylabel,
             norm=None,  # Use a LINEAR scale for the ratio map, not LogNorm!
             camp='viridis_r' # Use a reversed colormap so dense areas are dark
         )
@@ -244,13 +246,13 @@ def main():
         # 屏蔽计算失败的点 (我们之前设为了 NaN)
         co_map_masked = np.ma.masked_where(np.isnan(co_map_K_kms), co_map_K_kms)
 
-        plot_extent = provider.get_plot_extent(axis=slice_axis, units=cfg.FIGURE_UNITS)
+        co_plot_extent = provider.get_plot_extent(axis=slice_axis, units=cfg.FIGURE_UNITS)
         q2s.create_plot(
             data_2d=co_map_masked.T, # .T to transpose for correct orientation
             title=params['title'],
             cbar_label=params['cbar_label'],
             filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=plot_extent,
+            extent=co_plot_extent,
             xlabel=f"X ({cfg.FIGURE_UNITS})",
             ylabel=f"Y ({cfg.FIGURE_UNITS})",
             norm=params['norm'],
@@ -275,6 +277,7 @@ def main():
         })
         multiview_infos.append({
             'data_top': rho_projection.T.to_ndarray(),
+            'title': params['title'],
             'label': params['cbar_label'],
             'norm': params['norm'],
             'cmap': 'viridis'
@@ -292,6 +295,7 @@ def main():
         })
         multiview_infos.append({
             'data_top': surface_brightness_no_dust.T.to_ndarray(),
+            'title': params['title'],
             'label': params['cbar_label'],
             'norm': params['norm'],
             'cmap': 'viridis'
@@ -307,6 +311,7 @@ def main():
         })
         multiview_infos.append({
             'data_top': surface_brightness_with_dust.T.to_ndarray(),
+            'title': params['title'],
             'label': "Surface Brightness (erg/s/cm$^2$)",
             'norm': params['norm'],
             'cmap': 'viridis'
@@ -323,19 +328,11 @@ def main():
         })
         multiview_infos.append({
             'data_top': ratio_array,
+            'title': "Dust Transmission Ratio",
             'label': "Fraction of Light Transmitted",
             'norm': None,
             'cmap': 'viridis'
         })
-
-    # Get the shared plot extent and labels
-    
-    xlabel = f"{'XYZ'[proj_axis_idx-2]} ({cfg.FIGURE_UNITS})"
-    ylabel = f"{'XYZ'[proj_axis_idx-1]} ({cfg.FIGURE_UNITS})"
-
-
-
-
 
 # plot_multiview_grid(
 #     plots_info=plots_info,
@@ -354,11 +351,13 @@ def main():
     if multiview_infos:
         q2s.plot_multiview_grid(
             plots_info=multiview_infos,
-            extent_top=lum_3d_extent['x'],
+            extent_top=plot_extent,
             filename=os.path.join(cfg.OUTPUT_DIR, "new_combined.png"),
             units=cfg.FIGURE_UNITS,
+            top_ylabel=top_ylabel_axis,
+            top_xlabel=xlabel,
             include_bottom=False,
-            column_spacing=0.12,
+            column_spacing=0.025,
             colorbar_height_ratio=0.04,
         )
 
@@ -367,7 +366,7 @@ def main():
     if subplot_infos:
         q2s.create_horizontal_subplots(
             plots_info=subplot_infos,
-            shared_extent=lum_3d_extent['x'],
+            shared_extent=plot_extent,
             shared_xlabel=xlabel,
             shared_ylabel=ylabel,
             filename=os.path.join(cfg.OUTPUT_DIR, "halpha_analysis_combined.png")

@@ -68,7 +68,9 @@ def plot_multiview_grid(plots_info: List[Dict],
                         filename: str,
                         extent_bottom: Optional[List[float]] = None,
                         top_ylabel: str = "z",
+                        top_xlabel: Optional[str] = None,
                         bottom_ylabel: str = "x",
+                        bottom_xlabel: Optional[str] = None,
                         units: str = 'pc',
                         particles_top: Optional[Tuple[np.ndarray, np.ndarray]] = None,
                         particles_bottom: Optional[Tuple[np.ndarray, np.ndarray]] = None,
@@ -92,7 +94,9 @@ def plot_multiview_grid(plots_info: List[Dict],
     - extent_bottom: The physical extent for the bottom row of plots [Horizontal_min, Horizental_max, Vertical_min, Vertical_max].
                      Optional when not drawing the bottom row.
     - top_ylabel: The y-axis label for the top row of plots.
+    - top_xlabel: The x-axis label for the top row of plots. Optional.
     - bottom_ylabel: The y-axis label for the bottom row of plots.
+    - bottom_xlabel: The x-axis label for the bottom row of plots. Optional.
     - units: The unit string to append to the axis labels.
 
     - particles_top: Optional tuple (px, py) of particle coordinates for the top row.
@@ -224,6 +228,11 @@ def plot_multiview_grid(plots_info: List[Dict],
         ax_cbar.set_title(label, fontsize=8, y=0.85)
         ax_cbar.tick_params(axis='x', labelsize=7, pad=1)
 
+        title = info.get('title')
+        if title:
+            ax_top.set_title(title, fontsize=10, wrap=True)
+            if has_bottom_row and bottom_active:
+                ax_bottom.set_title(title, fontsize=10, wrap=True)
 
 
     if has_bottom_row:
@@ -246,6 +255,15 @@ def plot_multiview_grid(plots_info: List[Dict],
                 ax_t.set_ylabel(f"{top_ylabel} ({units})", fontsize=8)
             else:
                 ax_t.tick_params(axis='y', labelleft=False)
+
+    if top_xlabel is not None:
+        for ax_t in top_axes:
+            ax_t.set_xlabel(top_xlabel, fontsize=8)
+
+    if has_bottom_row and bottom_xlabel is not None:
+        for ax_b, active in zip(bottom_axes, bottom_active_flags):
+            if active:
+                ax_b.set_xlabel(bottom_xlabel, fontsize=8)
 
     # plt.tight_layout()
     plt.savefig(filename, dpi=800, bbox_inches='tight', pad_inches=0.2)

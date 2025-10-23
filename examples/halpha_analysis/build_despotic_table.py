@@ -139,6 +139,9 @@ def plot_table(
     cbar_label: str,
     show: bool = SHOW_PLOTS,
     use_log: bool = True,
+    overlay_mask: np.ndarray | None = None,
+    overlay_alpha: float = 0.35,
+    overlay_cmap = plt.cm.Greys,
 ) -> None:
     """a lookup table heatmap."""
 
@@ -173,6 +176,22 @@ def plot_table(
     ax.set_xlabel("Column Density (cm$^{-2}$)")
     ax.set_ylabel("n$_\\mathrm{H}$ (cm$^{-3}$)")
     ax.set_title(title)
+
+    if overlay_mask is not None:
+        overlay_mask = np.asarray(overlay_mask, dtype=bool)
+        if overlay_mask.shape != data.shape:
+            raise ValueError("overlay_mask must match data shape.")
+        overlay = np.ma.masked_where(~overlay_mask, np.ones_like(overlay_mask, dtype=float))
+        ax.pcolormesh(
+            col_edges,
+            nH_edges,
+            overlay,
+            shading="auto",
+            cmap=overlay_cmap,
+            alpha=overlay_alpha,
+            vmin=0,
+            vmax=1,
+        )
 
     cbar = fig.colorbar(mesh, ax=ax)
     cbar.set_label(cbar_label)
