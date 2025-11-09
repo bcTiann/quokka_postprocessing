@@ -12,6 +12,7 @@ import quokka2s as q2s
 import physics_models as phys
 
 
+
 def _compute_shared_lognorm(*arrays):
     """Return a LogNorm spanning the positive values of all provided arrays."""
     valid_arrays = [arr for arr in arrays if arr is not None]
