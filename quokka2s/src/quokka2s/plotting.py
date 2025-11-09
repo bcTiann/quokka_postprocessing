@@ -54,7 +54,7 @@ def create_plot(data_2d: np.ndarray,
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    plt.savefig(filename, dpi=300)
+    plt.savefig(filename, dpi=800)
     plt.show()
     plt.close(fig)
     print("="*40)
@@ -322,7 +322,7 @@ def create_horizontal_subplots(plots_info: List[Dict],
     plt.subplots_adjust(wspace=0.4)
 
     plt.tight_layout()
-    plt.savefig(filename, dpi=300)
+    plt.savefig(filename, dpi=800)
     plt.show()
     plt.close(fig)
     print("="*40)

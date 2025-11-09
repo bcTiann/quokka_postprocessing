@@ -4,11 +4,40 @@ import yt
 import numpy as np
 import os
 import time
+from matplotlib.colors import LogNorm
 
 # --- Import our custom modules ---
 import config as cfg
 import quokka2s as q2s
 import physics_models as phys
+
+
+def _compute_shared_lognorm(*arrays):
+    """Return a LogNorm spanning the positive values of all provided arrays."""
+    valid_arrays = [arr for arr in arrays if arr is not None]
+    if not valid_arrays:
+        return None
+    ref_units = valid_arrays[0].units
+    positives = []
+    for arr in valid_arrays:
+        # Convert to common units, flatten, and keep positive finite values
+        arr_vals = np.asarray(arr.to_value(ref_units)).ravel()
+        finite_vals = arr_vals[np.isfinite(arr_vals)]
+        finite_positive = finite_vals[finite_vals > 0]
+        if finite_positive.size:
+            positives.append(finite_positive)
+    if not positives:
+        return None
+    combined = np.concatenate(positives)
+    vmin = combined.min()
+    vmax = combined.max()
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
+        return None
+    if vmin <= 0:
+        vmin = combined[combined > 0].min()
+    if vmin == vmax:
+        vmax = vmin * (1 + 1e-9)
+    return LogNorm(vmin=vmin, vmax=vmax)
 
 def main():
     """Main function to run the H-alpha emission analysis."""
@@ -27,6 +56,7 @@ def main():
     surface_brightness_with_dust = None
     ratio_map = None
     co_map_K_kms = None
+    shared_halpha_norm = None
     
     # Map axis string to integer index for numpy
     axis_map = {'x': 0, 'y': 1, 'z': 2}
@@ -93,19 +123,6 @@ def main():
         # Perform the integration (projection)
         surface_brightness_no_dust = np.sum(lum_3d * dx_3d, axis=proj_axis_idx)
 
-        # Plot the result
-        plot_extent = provider.get_plot_extent(axis=cfg.PROJECTION_AXIS, units=cfg.FIGURE_UNITS)
-        q2s.create_plot(
-            data_2d=surface_brightness_no_dust.T.to_ndarray(),
-            title=params['title'],
-            cbar_label=params['cbar_label'],
-            filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=plot_extent,
-            xlabel=xlabel, # Clever way to get other axes
-            ylabel=ylabel,
-            norm=params['norm']
-        )
-
     # --- 4. Run "With Dust" Analysis ---
     if cfg.ANALYSES["halpha_with_dust"]["enabled"]:
         print("\n--- Starting H-alpha analysis WITH dust ---")
@@ -139,19 +156,30 @@ def main():
         # Apply attenuation and perform integration
         L_attenuated_3d = lum_3d * attenuation_3d
         surface_brightness_with_dust = np.sum(L_attenuated_3d * dx_3d, axis=proj_axis_idx)
-        
-        # Plot the result
-        plot_extent = provider.get_plot_extent(axis=cfg.PROJECTION_AXIS, units=cfg.FIGURE_UNITS)
-        q2s.create_plot(
-            data_2d=surface_brightness_with_dust.T.to_ndarray(),
-            title=params['title'],
-            cbar_label=params['cbar_label'],
-            filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
-            extent=plot_extent,
-            xlabel=xlabel,
-            ylabel=ylabel,
-            norm=params['norm']
-        )
+
+    # --- 4b. Plot H-alpha maps with shared normalization when available ---
+    if surface_brightness_no_dust is not None or surface_brightness_with_dust is not None:
+        if surface_brightness_no_dust is not None and surface_brightness_with_dust is not None:
+            shared_halpha_norm = _compute_shared_lognorm(
+                surface_brightness_no_dust, surface_brightness_with_dust
+            )
+
+        def _plot_halpha_map(data, params):
+            if data is None:
+                return
+            q2s.create_plot(
+                data_2d=data.T.to_ndarray(),
+                title=params['title'],
+                cbar_label=params['cbar_label'],
+                filename=os.path.join(cfg.OUTPUT_DIR, params['filename']),
+                extent=plot_extent,
+                xlabel=xlabel,
+                ylabel=ylabel,
+                norm=shared_halpha_norm or params['norm']
+            )
+
+        _plot_halpha_map(surface_brightness_no_dust, cfg.ANALYSES["halpha_no_dust"])
+        _plot_halpha_map(surface_brightness_with_dust, cfg.ANALYSES["halpha_with_dust"])
 
         # --- 5. (New!) Create and Plot a Ratio Map to Visualize Attenuation ---
     if cfg.ANALYSES["halpha_no_dust"]["enabled"] and cfg.ANALYSES["halpha_with_dust"]["enabled"]:
@@ -267,23 +295,6 @@ def main():
     subplot_infos = []
     multiview_infos = []
 
-    if rho_projection is not None:
-        params = cfg.ANALYSES["density"]
-        subplot_infos.append({
-            'data': rho_projection.T.to_ndarray(),
-            'title': params['title'],
-            'cbar_label': params['cbar_label'],
-            'norm': params['norm'],
-        })
-        multiview_infos.append({
-            'data_top': rho_projection.T.to_ndarray(),
-            'title': params['title'],
-            'label': params['cbar_label'],
-            'norm': params['norm'],
-            'cmap': 'viridis'
-        })
-        
-    
     if surface_brightness_no_dust is not None:
         params = cfg.ANALYSES["halpha_no_dust"]
         surface_brightness_no_dust.T.to_ndarray()
@@ -291,13 +302,13 @@ def main():
             'data': surface_brightness_no_dust.T.to_ndarray(),
             'title': params['title'],
             'cbar_label': params['cbar_label'],
-            'norm': params['norm'],
+            'norm': shared_halpha_norm or params['norm'],
         })
         multiview_infos.append({
             'data_top': surface_brightness_no_dust.T.to_ndarray(),
             'title': params['title'],
             'label': params['cbar_label'],
-            'norm': params['norm'],
+            'norm': shared_halpha_norm or params['norm'],
             'cmap': 'viridis'
         })
 
@@ -307,30 +318,13 @@ def main():
             'data': surface_brightness_with_dust.T.to_ndarray(),
             'title': params['title'],
             'cbar_label': "Surface Brightness (erg/s/cm$^2$)", # Using a fixed label for consistency
-            'norm': params['norm'],
+            'norm': shared_halpha_norm or params['norm'],
         })
         multiview_infos.append({
             'data_top': surface_brightness_with_dust.T.to_ndarray(),
             'title': params['title'],
             'label': "Surface Brightness (erg/s/cm$^2$)",
-            'norm': params['norm'],
-            'cmap': 'viridis'
-        })
-
-    if ratio_map is not None:
-        ratio_array = ratio_map.T.to_ndarray()
-        subplot_infos.append({
-            'data': ratio_array,
-            'title': "Dust Transmission Ratio",
-            'cbar_label': "Fraction of Light Transmitted",
-            'norm': None, # Linear scale for ratio map
-            'cmap': 'viridis',
-        })
-        multiview_infos.append({
-            'data_top': ratio_array,
-            'title': "Dust Transmission Ratio",
-            'label': "Fraction of Light Transmitted",
-            'norm': None,
+            'norm': shared_halpha_norm or params['norm'],
             'cmap': 'viridis'
         })
 
@@ -358,7 +352,7 @@ def main():
             top_xlabel=xlabel,
             include_bottom=False,
             column_spacing=0.025,
-            colorbar_height_ratio=0.04,
+            colorbar_height_ratio=0.08,
         )
 
 

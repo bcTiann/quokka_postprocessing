@@ -5,31 +5,28 @@ import numpy as np
 # from plot_interface import YTDataProvider, create_plot, create_horizontal_subplots, plot_multiview_grid
 from quokka2s import *
 from quokka2s.utils.axes import axis_index
-
-# 1. define field: temperature
-def _temperature(field, data):
-    mu = 0.6
-    # gas_internal_energy_density = data[('boxlib', 'gasInternalEnergy')]
-    gas_internal_energy_density = data[('gas', 'internal_energy_density')]
-    # gas_density = data[('boxlib', 'gasDensity')]
-    gas_density = data[('gas', 'density')]
-    temp = 2/3 * gas_internal_energy_density * mu * mh / gas_density / kb
-    return temp
+from examples.halpha_analysis import physics_models as phys
+# # 1. define field: temperature
+# def _temperature(field, data):
+#     mu = 0.6
+#     # gas_internal_energy_density = data[('boxlib', 'gasInternalEnergy')]
+#     gas_internal_energy_density = data[('gas', 'internal_energy_density')]
+#     # gas_density = data[('boxlib', 'gasDensity')]
+#     gas_density = data[('gas', 'density')]
+#     temp = 2/3 * gas_internal_energy_density * mu * mh / gas_density / kb
+#     return temp
 
 # Load your simulation data
 ds = yt.load("examples/halpha_analysis/plt263168") # Replace with your dataset file
+phys.add_all_fields(ds)
 
 
 
-# Instantiate your data provider
-provider = YTDataProvider(ds)
-
-
-# Add derived fields to the dataset
-ds.add_field(name=('gas', 'temperature'),
-             function=_temperature,
-             sampling_type="cell",  
-             units="K")             
+# # Add derived fields to the dataset
+# ds.add_field(name=('gas', 'temperature'),
+#              function=_temperature,
+#              sampling_type="cell",  
+#              units="K")             
 
 
 # 3. initialize data provider
@@ -140,6 +137,9 @@ plot_multiview_grid(
     particle_stride=1,
     show_particles_top=True,
     show_particles_bottom=False,
+    top_xlabel=f"Y ({units})",
+    bottom_xlabel=f"X ({units})",
+    bottom_ylabel="Y"
 )
 
 
