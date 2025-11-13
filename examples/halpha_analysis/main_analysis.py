@@ -1,4 +1,7 @@
-# main_analysis.py
+"""Entry point for the H-alpha analysis pipeline."""
+from __future__ import annotations
+
+from pathlib import Path
 
 import yt
 import numpy as np
@@ -10,6 +13,15 @@ from matplotlib.colors import LogNorm
 import config as cfg
 import quokka2s as q2s
 import physics_models as phys
+from quokka2s.pipeline.base import Pipeline, PipelineConfig
+from quokka2s.pipeline.tasks import (
+    DensityProjectionTask,
+    HalphaComparisonTask,
+    HalphaNoDustTask,
+    HalphaWithDustTask,
+)
+
+
 
 def _compute_shared_lognorm(*arrays):
     """Return a LogNorm spanning the positive values of all provided arrays."""
@@ -38,7 +50,7 @@ def _compute_shared_lognorm(*arrays):
         vmax = vmin * (1 + 1e-9)
     return LogNorm(vmin=vmin, vmax=vmax)
 
-def main():
+def main_old():
     """Main function to run the H-alpha emission analysis."""
     
     # --- 1. Setup and Data Loading ---
@@ -128,7 +140,7 @@ def main():
         params = cfg.ANALYSES["halpha_with_dust"]
         
         # Physics Calculation Steps
-        N_H_3d = q2s.calculate_cumulative_column_density(rho_3d, dx_3d, axis=proj_axis_idx, X_H=cfg.X_H, sign="+")
+        N_H_3d = q2s.calculate_cumulative_column_density(rho_3d, dx_3d, axis=proj_axis_idx, X_H=1.0, sign="+")
         
         # ======================= DEBUG STARTS HERE =======================
         print(f"Column density of H (N_H_3d):")
@@ -364,6 +376,32 @@ def main():
             shared_ylabel=ylabel,
             filename=os.path.join(cfg.OUTPUT_DIR, "halpha_analysis_combined.png")
         )
+
+
+
+def build_pipeline() -> Pipeline:
+    """Configure and assemble the pipeline with the desired tasks."""
+    pipeline_config = PipelineConfig(
+        dataset_path=cfg.YT_DATASET_PATH,
+        output_dir=Path(cfg.OUTPUT_DIR),
+        figure_units="kpc",
+        projection_axis="x",
+        field_setup=phys.add_all_fields,
+    )
+
+    pipeline = Pipeline(pipeline_config)
+    pipeline.register_task(DensityProjectionTask(pipeline_config, axis="x"))
+    pipeline.register_task(HalphaNoDustTask(pipeline_config, axis="x"))
+    pipeline.register_task(HalphaWithDustTask(pipeline_config, axis="x"))
+    pipeline.register_task(HalphaComparisonTask(pipeline_config, axis="x"))
+    return pipeline
+
+
+
+def main() -> None:
+    pipeline = build_pipeline()
+    pipeline.run()
+
 
 
 if __name__ == '__main__':
