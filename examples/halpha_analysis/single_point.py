@@ -11,24 +11,11 @@ import time
 import config as cfg
 # import yt
 
-# mH = mh
-# Tg_map = [1958.3639773669447, 1876.3811984430195, 1904.6735038533895, 2269.7464280911563, 5529.099690585343, 4467.07705368385, 1921.7595997264211, 1903.3063609939322, 1907.7950789311126, 1923.5653681769838, 3128.178080797415, 1921.9298726833636, 1896.4011480919055, 1909.3440156155311, 13996.874562092222, 3022.9801308742763, 1907.308357562927, 1909.4572682127873, 2229.9653914481332, 1947.0623389936507, 2388.5525460121485, 1901.115961026267, 2393.6290610541246, 2693.9753954376056, 1907.308357562927, 1907.308357562927, 1906.8138296348143, 2959.997148072065, 208072.04383595262, 503398.0480434042, 6199404.503674414, 1907.3083575629323, 1951.2451612775776, 1907.2675792788657, 1907.3096438825598, 2098.333042303612, 37739.033264610196, 25301.5132811833, 1907.1986667866572, 1906.0004035267134, 1940.9177912829907, 1907.2974533513202, 1907.978989716906, 1907.308433427053, 1926.1281732989792, 2043.475598201943, 2061.8065832019997, 1906.219433232716, 34590.689516202736, 24173.3696307906, 1123275.1871095176, 1998.2232263030933, 1891.6056493165058, 1908.05451292517, 1909.1151153089127, 1907.308357562927, 889293.6619643234, 67831.41869508532, 69094.70519253935, 2621.014000572547, 2080.154582484991, 1890.6529949503965, 2618.834115138999, 1907.3084022789865]
-# nH_map = [1.2320302372133183, 1.1684523696695739, 1.1974539579455588, 1.1942401672150151, 1.1855342979956085, 1.161448216214898, 1.199584760383945, 1.1753252637279459, 1.210521822892777, 1.1970207113781501, 1.19178332916999, 1.1321923164717076, 1.2076318592876174, 1.188859439192268, 1.1836976773830432, 1.1558925146612018, 1.1858019085800937, 1.1861685427101936, 1.1908277898323791, 1.2344626428349812, 1.2050211555908568, 1.1982340482522424, 1.206347083730393, 1.1865016791306218, 1.1858019085800937, 1.1858019085800937, 1.1873304494075356, 1.206115360795091, 1.1779518031419949, 1.1892951461545724, 1.1545051815415148, 1.1858019085801197, 1.179608466561351, 1.1858994073878082, 1.1858070530759097, 1.1918373321349323, 1.1433411860145717, 1.1602835898674009, 1.1859242619930501, 1.1923800389509445, 1.192878087036351, 1.1858206349049605, 1.1864388868281999, 1.1858020373339584, 1.1968288635100475, 1.1977691937746906, 1.1859647204675012, 1.1903900060189183, 1.1866796114621316, 1.206031662664297, 1.1748806508216025, 1.2125163035408497, 1.2029741826696536, 1.1878734281802794, 1.1897061459608487, 1.1858019085800937, 1.1791845771894107, 1.1600456182676286, 1.2035796972905481, 1.2044040890806997, 1.1469815629635776, 1.212447323823883, 1.1770582579165845, 1.1858019708459082]
-# colDens_map = [9.786281204255755e+19, 9.666951701779079e+19, 9.724975802568827e+19, 9.733322563233071e+19, 9.6838059557484e+19, 9.671120964662336e+19, 9.713585793744065e+19, 9.67320637676157e+19, 9.73839076563484e+19, 9.687896219838741e+19, 9.694492773090741e+19, 9.641266645309397e+19, 9.69992930411563e+19, 9.686045767796931e+19, 9.674831880493859e+19, 9.627783636681343e+19, 9.753600832311237e+19, 9.723986188304089e+19, 9.746089961439465e+19, 9.822600009452415e+19, 9.744705874662762e+19, 9.748553925928549e+19, 9.75454538601202e+19, 9.716677907541502e+19, 9.706145460833103e+19, 9.675782430154767e+19, 9.694954915470474e+19, 9.73260932042937e+19, 9.65307602394057e+19, 9.691773018327938e+19, 9.63946406547262e+19, 9.668966165132386e+19, 9.675940505517359e+19, 9.65727137273969e+19, 9.67396007269483e+19, 9.698344441934466e+19, 9.59971515709126e+19, 9.633723751156372e+19, 9.660232414632685e+19, 9.659619009654722e+19, 9.732970696544918e+19, 9.695186683882268e+19, 9.712989713072216e+19, 9.729076395379946e+19, 9.706552542713476e+19, 9.717844846787597e+19, 9.695854572652141e+19, 9.694899734829269e+19, 9.735649821753013e+19, 9.732839287600431e+19, 9.689435388612021e+19, 9.775688300392872e+19, 9.725361712896752e+19, 9.71607330277694e+19, 9.713394283819046e+19, 9.697990926250071e+19, 9.685789539555518e+19, 9.642895153297108e+19, 9.711278354429588e+19, 9.73407766070865e+19, 9.609640744783649e+19, 9.719601595900025e+19, 9.668506161480008e+19, 9.667747813691875e+19]
-# ds = yt.load(cfg.YT_DATASET_PATH)
-
 
 cell = cloud()
 
-
-# cell.Tg = 6.421e+09
-# cell.nH = 1.000e-04
-# cell.colDen = 4.642e+18
-
-
 cell.Tg = 4082
 cell.nH = 562.341325190349
-# cell.nH = 3206.2671377973843
 cell.colDen = 1.7782794100389228e+23
 
 
@@ -54,12 +41,10 @@ cell.rad.TradDust   = 0.0        # IR radiation field seen by the dust
 cell.rad.ionRate    = 2.0e-17    # Primary ionization rate
 cell.rad.chi        = 1.0        # ISRF normalized to Solar neighborhood
 
-cell.addEmitter("CO", 8.0e-9)
-cell.addEmitter("C+", 1.1e-4)
-
 start_time = time.time()  # 2. 記錄開始時間
 
 cell.comp.computeDerived(cell.nH)
+
 
 # --- 執行核心計算 ---
 print("-------set Temp Eq --------")
@@ -69,113 +54,50 @@ print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
 print("----------------------------")
 
-base_guesses = [
-    cell.Tg,
-    cell.Tg * 0.5,
-    cell.Tg * 2.0,
-    50.0,
-    100.0,
-    300.0,
-    1_000.0,
-    3_000.0,
-    10_000.0,
-    30_000.0,
-]
+attempt_start = time.time()
+converged = cell.setChemEq(
+    network=NL99_GC,
+    evolveTemp="iterateDust",
+    tol=1e-6,
+    maxTime=1e16,
+    maxTempIter=50,
+)
+duration = time.time() - attempt_start
+final_Tg = cell.Tg
+print(f"final={final_Tg:.3g} K | converged={converged} | time={duration:.2f}s")
 
-def _append_guess(target: list[float], value: float) -> None:
-    if not np.isfinite(value) or value <= 0:
-        return
-    for existing in target:
-        if abs(value - existing) / max(existing, 1.0) < 0.05:
-            return
-    target.append(float(value))
-
-guess_queue: list[float] = []
-for guess in base_guesses:
-    _append_guess(guess_queue, guess)
-
-attempt_log: list[dict[str, Union[float, bool]]] = []
-extra_guess_limit = 5
-final_converged = False
-final_Tg = float("nan")
-
-while guess_queue:
-    current_guess = guess_queue.pop(0)
-    cell.Tg = current_guess
-    attempt_start = time.time()
-    
-    stages = [
-        {"maxTime": 1e16, "maxTempIter": 50},
-        {"maxTime": 1e17, "maxTempIter": 100},
-        {"maxTime": 1e18, "maxTempIter": 200},
-        {"maxTime": 1e19, "maxTempIter": 400},
-    ]
-    converged = False
-    last_stage = stages[0]
-    for stage_idx, stage in enumerate(stages, start=1):
-        last_stage = stage
-        converged = cell.setChemEq(
-            network=NL99,
-            evolveTemp="iterate",
-            tol=1e-6,
-            maxTime=stage["maxTime"],
-            maxTempIter=stage["maxTempIter"],
-        )
-        print(
-            f"    stage {stage_idx}: maxTime={stage['maxTime']:.1e}, "
-            f"maxTempIter={stage['maxTempIter']} -> converged={converged}"
-        )
-        if converged:
-            break
-    duration = time.time() - attempt_start
-    final_Tg = cell.Tg
-    attempt_log.append(
-        {
-            "guess": current_guess,
-            "final_Tg": final_Tg,
-            "converged": converged,
-            "duration_s": duration,
-        }
-    )
-    print(
-        f"[Attempt {len(attempt_log):02d}] guess={current_guess:.3g} K | "
-        f"final={final_Tg:.3g} K | converged={converged} | time={duration:.2f}s"
-    )
-    if converged:
-        final_converged = True
-        break
-    if len(guess_queue) < extra_guess_limit:
-        _append_guess(guess_queue, final_Tg)
-
-print(f"converge = {final_converged}")
-print(f"final Tg = {final_Tg}")
 
 # --- 處理計算結果 ---
-lines = cell.lineLum("CO")
-co_int_TB = lines[0]["intTB"]
-co_line_map.append(co_int_TB)
+print(f"abundances final: {cell.chemnetwork.abundances}")
+print("\n")
+print(f"cell chemabundances: {cell.chemabundances}")
 
-end_time = time.time()  # 3. 記錄結束時間
-
-elapsed_time = end_time - start_time
-print(f"程式運算時間: {elapsed_time:.4f} 秒")
-
-print(f"co_line_map = {co_line_map}")
-print(f"Tg final = {final_Tg}")
-lines = cell.lineLum("C+")
-cp_int_TB = lines[0]["intTB"]
-print(f"C+_line_map = {cp_int_TB}")
+print(f"cell emitters: {cell.emitters}")
 
 
+# Add CO emitter
+print("Adding CO emitter...")
+cell.addEmitter("CO", cell.chemabundances["CO"])
+cell.addEmitter("C+", cell.chemabundances["C+"])
+cell.addEmitter("HCO+", cell.chemabundances["HCO+"])
 
-# NL99_GC
-# co_line_map = [np.float64(26.647168610309297)]
-# Tg final = 5.131135278673986
+print(cell.emitters)             # => {'CO': <despotic.emitter.emitter object at 0x...>}
+print(cell.emitters['CO'].abundance)  # => 0.0001999439...
+print(cell.emitters['C+'].abundance)
+print(cell.emitters['HCO+'].abundance)
+print(cell.chemabundances["e-"])
+
+print("\n")
+print("Calculating line luminosities...")
+lines = cell.lineLum
+print(lines)
+# co_int_TB = lines[0]["intTB"]
+# co_line_map.append(co_int_TB)
 
 
- #GOW
-# co_line_map = [np.float64(27.130430537040976)]
-# Tg final = 5.177461694980736
+# print(f"co_line_map = {co_line_map}")
+# print(f"Tg final = {final_Tg}")
+# lines = cell.lineLum("C+")
+# cp_int_TB = lines[0]["intTB"]
+# print(f"C+_line_map = {cp_int_TB}")
 
-# co_line_map = [np.float64(27.124421626015074)]
-# Tg final = 5.176960879841981

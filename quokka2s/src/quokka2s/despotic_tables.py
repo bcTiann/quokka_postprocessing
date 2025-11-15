@@ -406,8 +406,6 @@ def calculate_single_despotic_point(
 
             cell.comp.computeDerived(cell.nH)
 
-            for species, abundance in emitter_abundances.items():
-                cell.addEmitter(species, abundance)
 
             residual_trace_run: list[float] = []
             stdout_buffer = io.StringIO()
@@ -713,131 +711,134 @@ def build_table(
         attempts=attempts,
     )
 
-def make_temperature_interpolator(
-    nH_values: Sequence[float],
-    col_density_values: Sequence[float],
-    tg_table: np.ndarray,
-    *,
-    kx: int = 3,
-    ky: int = 3,
-) -> RectBivariateSpline:
-    """Create a spline interpolator in log-space for Tg data."""
-    nH_values = np.asarray(nH_values)
-    col_density_values = np.asarray(col_density_values)
-    tg_table = np.asarray(tg_table)
 
-    if tg_table.shape != (nH_values.size, col_density_values.size):
-        raise ValueError(
-            "tg_table shape must match the lengths of nH_values and col_density_values"
-        )
 
-    log_nH = np.log10(nH_values)
-    log_col = np.log10(col_density_values)
-    if np.any(~np.isfinite(log_nH)) or np.any(~np.isfinite(log_col)):
-        raise ValueError("nH_values and col_density_values must be positive and finite")
+# def make_temperature_interpolator(
+#     nH_values: Sequence[float],
+#     col_density_values: Sequence[float],
+#     tg_table: np.ndarray,
+#     *,
+#     kx: int = 3,
+#     ky: int = 3,
+# ) -> RectBivariateSpline:
+#     """Create a spline interpolator in log-space for Tg data."""
+#     nH_values = np.asarray(nH_values)
+#     col_density_values = np.asarray(col_density_values)
+#     tg_table = np.asarray(tg_table)
 
-    log_tg = np.log10(tg_table)
-    if np.any(~np.isfinite(log_tg)):
-        raise ValueError("tg_table must contain only positive, finite values")
+#     if tg_table.shape != (nH_values.size, col_density_values.size):
+#         raise ValueError(
+#             "tg_table shape must match the lengths of nH_values and col_density_values"
+#         )
 
-    return RectBivariateSpline(log_nH, log_col, log_tg, kx=kx, ky=ky)
+#     log_nH = np.log10(nH_values)
+#     log_col = np.log10(col_density_values)
+#     if np.any(~np.isfinite(log_nH)) or np.any(~np.isfinite(log_col)):
+#         raise ValueError("nH_values and col_density_values must be positive and finite")
 
-def refine_table(
-    coarse_table: DespoticTable,
-    fine_nH_grid: LogGrid,
-    fine_col_den_grid: LogGrid,
-    tg_guesses: Sequence[float],
-    *,
-    chem_network=NL99,
-    emitter_abundances: Mapping[str, float] | None = None,
-    interpolator: Optional[RectBivariateSpline] = None,
-    n_jobs: int = -1,
-    repeat_equilibrium: int = 0,
-    show_progress: bool = False,
-    log_failures: bool = False,
-    reuse_failed_tg: bool = False,
-    reuse_max_insertions: int = 3,
-) -> DespoticTable:
-    """Use a coarse table to guide computation on a finer grid."""
-    if emitter_abundances is None:
-        emitter_abundances = coarse_table.emitter_abundances
+#     log_tg = np.log10(tg_table)
+#     if np.any(~np.isfinite(log_tg)):
+#         raise ValueError("tg_table must contain only positive, finite values")
 
-    if interpolator is None:
-        interpolator = make_temperature_interpolator(
-            coarse_table.nH_values,
-            coarse_table.col_density_values,
-            coarse_table.tg_final,
-        )
+#     return RectBivariateSpline(log_nH, log_col, log_tg, kx=kx, ky=ky)
 
-    return build_table(
-        fine_nH_grid,
-        fine_col_den_grid,
-        tg_guesses,
-        chem_network=chem_network,
-        emitter_abundances=emitter_abundances,
-        interpolator=interpolator,
-        n_jobs=n_jobs,
-        repeat_equilibrium=repeat_equilibrium,
-        show_progress=show_progress,
-        log_failures=log_failures,
-        reuse_failed_tg=reuse_failed_tg,
-        reuse_max_insertions=reuse_max_insertions,
-    )
+# def refine_table(
+#     coarse_table: DespoticTable,
+#     fine_nH_grid: LogGrid,
+#     fine_col_den_grid: LogGrid,
+#     tg_guesses: Sequence[float],
+#     *,
+#     chem_network=NL99,
+#     emitter_abundances: Mapping[str, float] | None = None,
+#     interpolator: Optional[RectBivariateSpline] = None,
+#     n_jobs: int = -1,
+#     repeat_equilibrium: int = 0,
+#     show_progress: bool = False,
+#     log_failures: bool = False,
+#     reuse_failed_tg: bool = False,
+#     reuse_max_insertions: int = 3,
+# ) -> DespoticTable:
+#     """Use a coarse table to guide computation on a finer grid."""
+#     if emitter_abundances is None:
+#         emitter_abundances = coarse_table.emitter_abundances
 
-def fill_missing_values(table: DespoticTable) -> DespoticTable:
-    log_nH = np.log10(table.nH_values)
-    log_col = np.log10(table.col_density_values)
-    log_col_grid, log_nH_grid = np.meshgrid(log_col, log_nH, indexing="xy")
+#     if interpolator is None:
+#         interpolator = make_temperature_interpolator(
+#             coarse_table.nH_values,
+#             coarse_table.col_density_values,
+#             coarse_table.tg_final,
+#         )
 
-    def _fill_grid(values: np.ndarray, *, log_space: bool) -> np.ndarray:
-        grid = values.copy()
-        mask = ~np.isfinite(grid)
-        if log_space:
-            mask |= grid <= 0
-        if not mask.any():
-            return grid
+#     return build_table(
+#         fine_nH_grid,
+#         fine_col_den_grid,
+#         tg_guesses,
+#         chem_network=chem_network,
+#         emitter_abundances=emitter_abundances,
+#         interpolator=interpolator,
+#         n_jobs=n_jobs,
+#         repeat_equilibrium=repeat_equilibrium,
+#         show_progress=show_progress,
+#         log_failures=log_failures,
+#         reuse_failed_tg=reuse_failed_tg,
+#         reuse_max_insertions=reuse_max_insertions,
+#     )
 
-        if log_space:
-            safe = grid.copy()
-            safe[mask] = 1.0
-            work = np.log10(safe)
-        else:
-            work = grid
 
-        points = np.column_stack((log_nH_grid[~mask], log_col_grid[~mask]))
-        targets = np.column_stack((log_nH_grid[mask], log_col_grid[mask]))
-        filled = griddata(points, work[~mask], targets, method="linear")
+# def fill_missing_values(table: DespoticTable) -> DespoticTable:
+#     log_nH = np.log10(table.nH_values)
+#     log_col = np.log10(table.col_density_values)
+#     log_col_grid, log_nH_grid = np.meshgrid(log_col, log_nH, indexing="xy")
 
-        if np.isnan(filled).any():
-            fallback = griddata(points, work[~mask], targets, method="nearest")
-            filled = np.where(np.isnan(filled), fallback, filled)
+#     def _fill_grid(values: np.ndarray, *, log_space: bool) -> np.ndarray:
+#         grid = values.copy()
+#         mask = ~np.isfinite(grid)
+#         if log_space:
+#             mask |= grid <= 0
+#         if not mask.any():
+#             return grid
 
-        result = work.copy()
-        result[mask] = filled
-        return np.power(10.0, result) if log_space else result
+#         if log_space:
+#             safe = grid.copy()
+#             safe[mask] = 1.0
+#             work = np.log10(safe)
+#         else:
+#             work = grid
 
-    species_filled: dict[str, SpeciesLineGrid] = {}
-    for species, grid in table.species_data.items():
-        species_filled[species] = SpeciesLineGrid(
-            int_tb=_fill_grid(grid.int_tb, log_space=False),
-            int_intensity=_fill_grid(grid.int_intensity, log_space=True),
-            lum_per_h=_fill_grid(grid.lum_per_h, log_space=True),
-            tau=_fill_grid(grid.tau, log_space=False),
-            tau_dust=_fill_grid(grid.tau_dust, log_space=False),
-            tex=_fill_grid(grid.tex, log_space=False),
-            freq=np.array(grid.freq, copy=True),
-        )
+#         points = np.column_stack((log_nH_grid[~mask], log_col_grid[~mask]))
+#         targets = np.column_stack((log_nH_grid[mask], log_col_grid[mask]))
+#         filled = griddata(points, work[~mask], targets, method="linear")
 
-    tg_filled = _fill_grid(table.tg_final, log_space=True)
+#         if np.isnan(filled).any():
+#             fallback = griddata(points, work[~mask], targets, method="nearest")
+#             filled = np.where(np.isnan(filled), fallback, filled)
 
-    return DespoticTable(
-        species_data=species_filled,
-        tg_final=tg_filled,
-        nH_values=table.nH_values,
-        col_density_values=table.col_density_values,
-        emitter_abundances=table.emitter_abundances,
-        attempts=table.attempts,
-    )
+#         result = work.copy()
+#         result[mask] = filled
+#         return np.power(10.0, result) if log_space else result
+
+#     species_filled: dict[str, SpeciesLineGrid] = {}
+#     for species, grid in table.species_data.items():
+#         species_filled[species] = SpeciesLineGrid(
+#             int_tb=_fill_grid(grid.int_tb, log_space=False),
+#             int_intensity=_fill_grid(grid.int_intensity, log_space=True),
+#             lum_per_h=_fill_grid(grid.lum_per_h, log_space=True),
+#             tau=_fill_grid(grid.tau, log_space=False),
+#             tau_dust=_fill_grid(grid.tau_dust, log_space=False),
+#             tex=_fill_grid(grid.tex, log_space=False),
+#             freq=np.array(grid.freq, copy=True),
+#         )
+
+#     tg_filled = _fill_grid(table.tg_final, log_space=True)
+
+#     return DespoticTable(
+#         species_data=species_filled,
+#         tg_final=tg_filled,
+#         nH_values=table.nH_values,
+#         col_density_values=table.col_density_values,
+#         emitter_abundances=table.emitter_abundances,
+#         attempts=table.attempts,
+#     )
 
 def compute_average(
     components: Sequence[np.ndarray],
@@ -924,9 +925,6 @@ __all__ = [
     "SpeciesLineGrid",
     "calculate_single_despotic_point",
     "build_table",
-    "make_temperature_interpolator",
-    "refine_table",
-    "fill_missing_values",
     "compute_average",
     "ensure_species_fields",
     "select_indices",

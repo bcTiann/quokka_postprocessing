@@ -230,7 +230,7 @@ def save_table(prefix: str, table: DespoticTable) -> None:
 def build_table_at_resolution(points: int,
                               seed_table: DespoticTable | None,
                               repeat_equilibrium: int = 0,
-                              chem_network=NL99,
+                              chem_network=NL99_GC,
                               round_digits: int | None = None,
                               n_jobs: int = -1,
                               reuse_failed_tg: bool = False,) -> DespoticTable:
