@@ -17,6 +17,4 @@ __all__ = [
     "DespoticTable",
     "calculate_single_despotic_point",
     "build_table",
-    "make_temperature_interpolator",
-    "refine_table",
 ]

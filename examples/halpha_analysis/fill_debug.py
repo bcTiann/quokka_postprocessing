@@ -8,9 +8,6 @@ from quokka2s.despotic_tables import (
     DespoticTable,
     LogGrid,
     build_table,
-    make_temperature_interpolator,
-    refine_table,
-    fill_missing_values,
 )
 
 

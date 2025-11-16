@@ -20,9 +20,6 @@ from quokka2s.despotic_tables import (
     LogGrid,
     SpeciesLineGrid,
     build_table,
-    fill_missing_values,
-    make_temperature_interpolator,
-    refine_table,
 )
 
 # OUTPUT_DIR = Path("output_tables_GC")

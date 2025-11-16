@@ -20,7 +20,7 @@ def plot_sampling_histogram(
         samples: np.ndarray,
         *,
         ax: plt.Axes | None = None,
-        cmap: str = "magma",
+        cmap: str = "viridis",
         log_space: bool = True,
 ) -> plt.Axes:
     """Plot a histogram showing the sampling density of given samples in the table.
@@ -76,13 +76,17 @@ def plot_sampling_histogram(
     fig.colorbar(mesh, ax=ax, label="Counts")
 
     if table.failure_mask is not None:
+        print("Overlaying failure regions...")
         mask = np.ma.masked_where(~table.failure_mask, table.failure_mask)
+        overlay = np.where(table.failure_mask, 1.0, np.nan)
         ax.imshow(
-            mask.T,
+            overlay.T,
             origin="lower",
             aspect="auto",
-            cmap="Greys",
-            alpha=0.3,
+            cmap="Reds",
+            alpha=0.8,
+            vmin=0.0,
+            vmax=1.0,
             extent=[
                 nH_vals[0],
                 nH_vals[-1],
