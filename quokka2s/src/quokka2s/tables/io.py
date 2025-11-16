@@ -1,6 +1,21 @@
 # quokka2s/src/quokka2s/tables/io.py
 from __future__ import annotations
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="collision rates not available",
+    category=UserWarning,
+    module=r"DESPOTIC.*emitterData",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="divide by zero encountered in log",
+    category=RuntimeWarning,
+    module=r"DESPOTIC.*NL99_GC",
+)
+
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -14,7 +29,7 @@ _SPECIES_FIELDS = ("freq", "intIntensity", "intTB", "lumPerH", "tau", "tauDust",
 
 def _attempts_to_array(attempts: Iterable[AttemptRecord]) -> np.ndarray:
     records = list(attempts)
-    arr = np.empty(len(records), dtype([
+    arr = np.empty(len(records), dtype=[
         ("row_idx", np.int32),
         ("col_idx", np.int32),
         ("nH", float),
@@ -24,7 +39,7 @@ def _attempts_to_array(attempts: Iterable[AttemptRecord]) -> np.ndarray:
         ("converged", np.bool_),
         ("message", object),
         ("duration", float),
-    ]))
+    ])
     for idx, rec in enumerate(records):
         arr[idx] = (
             rec.row_idx,
@@ -68,7 +83,6 @@ def save_table(table: DespoticTable, path: str | Path) -> None:
         "col_density_values": np.array(table.col_density_values),
         "tg_final": np.array(table.tg_final),
         "failure_mask": np.asarray(table.failure_mask) if table.failure_mask is not None else None,
-        "energy_rate": np.asarray(table.energy_rate) if table.energy_rate is not None else None,
         "species_names": np.array(table.species, dtype=object),
         "attempts": _attempts_to_array(table.attempts),
     }
@@ -76,7 +90,11 @@ def save_table(table: DespoticTable, path: str | Path) -> None:
         for field in _SPECIES_FIELDS:
             payload[f"{species}_{field}"] = getattr(grid, field)
             # e.g., "CO_freq", "C+_intTB", etc.
-    
+    if table.energy_terms:
+        payload["energy_term_names"] = np.array(list(table.energy_terms.keys()), dtype=object)
+        for name, grid in table.energy_terms.items():
+            payload[f"energy::{name}"] = np.asarray(grid)
+
     payload = {key: value for key, value in payload.items() if value is not None} # Remove any None (key, value) pairs
     np.savez_compressed(path, **payload)
 
@@ -97,15 +115,31 @@ def load_table(path: str | Path) -> DespoticTable:
     if failure_mask is not None:
         failure_mask = np.array(failure_mask, dtype=bool)
 
-    energy_rate = blob.get("energy_rate")
-    if energy_rate is not None:
-        energy_rate = np.array(energy_rate, dtype=float)
+    energy_fields = None
+    energy_names = blob.get("energy_term_names")
+    if energy_names is not None:
+        energy_fields = {
+            str(name): np.array(blob[f"energy::{name}"], dtype=float)
+            for name in energy_names
+        }
 
     species_names = [str(x) for x in blob["species_names"]]
     species_data: dict[str, SpeciesLineGrid] = {}
     for name in species_names:
         fields: Mapping[str, np.ndarray] = {
-            field: np.array(blob[f"{name}: {field}"], dtype=float)
+            field: np.array(blob[f"{name}_{field}"], dtype=float)
             for field in _SPECIES_FIELDS
         }
         species_data[name] = SpeciesLineGrid(**fields)
+        
+    attempts = _attempts_from_array(blob["attempts"])
+
+    return DespoticTable(
+        species_data=species_data,
+        tg_final=tg_final,
+        nH_values=nH_values,
+        col_density_values=col_density_values,
+        attempts=attempts,
+        failure_mask=failure_mask,
+        energy_terms=energy_fields,
+    )

@@ -1,5 +1,18 @@
 from __future__ import annotations
+import warnings
 
+warnings.filterwarnings(
+    "ignore",
+    message="collision rates not available",
+    category=UserWarning,
+    module=r"DESPOTIC.*emitterData",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="divide by zero encountered in log",
+    category=RuntimeWarning,
+    module=r"DESPOTIC.*NL99_GC",
+)
 import contextlib
 import io
 import logging
@@ -83,7 +96,7 @@ def calculate_single_despotic_point(
     row_idx: int | None = None,
     col_idx: int | None = None,
     attempt_log: list[AttemptRecord] | None = None,
-) -> Tuple[Mapping[str, LineLumResult], float, bool]:
+) -> Tuple[Mapping[str, LineLumResult], Mapping[str, float], float, Mapping[str, float], bool]:
     """
     Calculate DESPOTIC line for a single point in (nH, colDen) .
 
@@ -121,7 +134,7 @@ def calculate_single_despotic_point(
 
     last_line_results: dict[str, LineLumResult] = _empty_line_results(species_order)
     last_abundances: dict[str, float] = {sp: float("nan") for sp in species_order}
-    last_energy_rate = float("nan")
+    last_energy_terms: dict[str, float] = {}
     last_final_tg = float("nan")
     failed = True
     
@@ -132,6 +145,8 @@ def calculate_single_despotic_point(
         seen_guesses.append(guess)
         attempt_start_time = time.perf_counter()
 
+        energy_terms: dict[str, float] = {}
+        final_tg = float("nan")
         stdout_buffer = io.StringIO()
         
         try:
@@ -179,13 +194,13 @@ def calculate_single_despotic_point(
                 line_results[species] = _extract_line_result(transitions)
                 species_abundances[species] = float(cell.emitters[species].abundance)
 
-            energy_rate = float(cell.dEdt())
+            energy_terms = dict(cell.dEdt())
             final_tg = float(cell.Tg)
             failed = not converged
 
             last_line_results = dict(line_results)
             last_abundances = dict(species_abundances)
-            last_energy_rate = energy_rate
+            last_energy_terms = dict(energy_terms)
             last_final_tg = final_tg
 
             if attempt_log is not None:
@@ -206,7 +221,7 @@ def calculate_single_despotic_point(
                 MappingProxyType(last_line_results),
                 MappingProxyType(last_abundances),
                 last_final_tg,
-                last_energy_rate,
+                MappingProxyType(last_energy_terms),
                 failed,
             )
 
@@ -225,6 +240,7 @@ def calculate_single_despotic_point(
                         duration=time.perf_counter() - attempt_start_time,
                     )
             )
+            last_energy_terms = dict(energy_terms)
 
     if log_failures:
         LOGGER.warning("All guesses failed for nH=%s colDen=%s", nH_val, colDen_val)
@@ -232,7 +248,7 @@ def calculate_single_despotic_point(
     MappingProxyType(last_line_results),
     MappingProxyType(last_abundances),
     last_final_tg,
-    last_energy_rate,
+    MappingProxyType(last_energy_terms),
     True,
     )
 

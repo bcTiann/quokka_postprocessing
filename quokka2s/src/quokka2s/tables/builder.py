@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import warnings
+warnings.filterwarnings("ignore", message="collision rates not available")
+warnings.filterwarnings("ignore", message="divide by zero encountered in log")
+
 import csv
 import logging
 from pathlib import Path
 from typing import Mapping, Sequence
 
 import numpy as np
+np.seterr(divide="ignore", invalid="ignore")
+
 from despotic.chemistry import NL99, NL99_GC, GOW
+from joblib import Parallel, delayed
+from tqdm_joblib import tqdm_joblib 
+from tqdm import tqdm
+from functools import partial
 
 from .models import AttemptRecord, DespoticTable, LineLumResult, LogGrid, SpeciesLineGrid
 from .solver import LINE_RESULT_FIELDS, calculate_single_despotic_point
@@ -22,6 +32,7 @@ def build_table(
     species: Sequence[str] = ("CO", "C+", "HCO+"),
     chem_network=NL99_GC,
     show_progress: bool = True,
+    workers: int | None = None,
 ) -> DespoticTable:
     """
     Run DESPOTIC across logarithmic density/column grids and cache the results.
@@ -58,7 +69,6 @@ def build_table(
 
     tg_table = np.full((num_rows, num_cols), np.nan, dtype=float)
     failure_mask = np.zeros((num_rows, num_cols), dtype=bool)
-    energy_rate = np.full((num_rows, num_cols), np.nan, dtype=float)
 
     buffer_fields = tuple(LINE_RESULT_FIELDS) + ("abundance",)
     species_buffers: dict[str, dict[str, np.ndarray]] = {
@@ -68,17 +78,51 @@ def build_table(
         }
         for sp in species
     }   
+    energy_fields: dict[str, np.ndarray] = {}
 
-    attempts: list[AttemptRecord] = []
 
-    row_iter = range(num_rows)
-    if show_progress:
-        from tqdm import tqdm
-        row_iter = tqdm(row_iter, desc="DESPOTIC rows")
-    
-    for row_idx in row_iter:
+    def _solve_row(
+        row_idx: int,
+        *,
+        nH_vals: np.ndarray,
+        col_vals: np.ndarray,
+        tg_guesses: Sequence[float],
+        species: Sequence[str],
+        chem_network,
+    ) -> tuple[int, np.ndarray, np.ndarray, dict[str, dict[str, np.ndarray]], dict[str, np.ndarray], list[AttemptRecord]]:
+        tg_row = np.full(col_vals.shape, np.nan, dtype=float)
+        failure_row = np.zeros(col_vals.shape, dtype=bool)
+        species_rows: dict[str, dict[str, np.ndarray]] = {
+            sp: {field: np.full(col_vals.shape, np.nan, dtype=float) for field in buffer_fields}
+            for sp in species
+        }  
+        warnings.filterwarnings(
+            "ignore",
+            message="collision rates not available",
+            category=UserWarning,
+            module=r"DESPOTIC.*emitterData",
+        )
+        warnings.filterwarnings(
+            "ignore",
+            message="divide by zero encountered in log",
+            category=RuntimeWarning,
+            module=r"DESPOTIC.*NL99_GC",
+    )
+
+        def _flatten_energy(term_name: str, value, target: dict[str, np.ndarray], idx: int) -> None:
+            if isinstance(value, Mapping):
+                for sub_key, sub_value in value.items():
+                    _flatten_energy(f"{term_name}.{sub_key}", sub_value, target, idx)
+                return
+            grid = target.setdefault(term_name, np.full(col_vals.shape, np.nan, dtype=float))
+            grid[idx] = float(value)
+
+
+        energy_rows: dict[str, np.ndarray] = {}
+        attempts_row: list[AttemptRecord] = []
+
         for col_idx, col_val in enumerate(col_vals):
-            line_results, abundances, final_tg, e_dot, failed = calculate_single_despotic_point(
+            line_results, abundances, final_tg, energy_terms, failed = calculate_single_despotic_point(
                 nH_val=nH_vals[row_idx],
                 colDen_val=col_val,
                 initial_Tg_guesses=tg_guesses,
@@ -87,21 +131,63 @@ def build_table(
                 row_idx=row_idx,
                 col_idx=col_idx,
                 log_failures=True,
-                attempt_log=attempts
+                attempt_log=attempts_row,
             )
-            tg_table[row_idx, col_idx] = final_tg
-            failure_mask[row_idx, col_idx] = failed
-            energy_rate[row_idx, col_idx] = e_dot
+            tg_row[col_idx] = final_tg
+            failure_row[col_idx] = failed
 
-
+            # species data
             for sp in species:
-                buffer = species_buffers[sp]
                 result = line_results.get(sp, DEFAULT_LINE_RESULT)
                 for field in LINE_RESULT_FIELDS:
-                    buffer[field][row_idx, col_idx] = getattr(result, field)
-                buffer["abundance"][row_idx, col_idx] = abundances.get(sp, float("nan"))
-    
+                    species_rows[sp][field][col_idx] = getattr(result, field)
+                species_rows[sp]["abundance"][col_idx] = abundances.get(sp, float("nan"))
 
+            # energy terms
+            for term, value in energy_terms.items():
+                _flatten_energy(term, value, energy_rows, col_idx)
+
+
+        return row_idx, tg_row, failure_row, species_rows, energy_rows, attempts_row
+
+
+    attempts: list[AttemptRecord] = []
+    if workers is None:
+        workers = -1
+
+    tasks = range(num_rows)
+    solve_row = partial(
+        _solve_row,
+        nH_vals=nH_vals,
+        col_vals=col_vals,      
+        tg_guesses=tg_guesses,
+        species=species,
+        chem_network=chem_network,
+    )
+
+    if show_progress:
+        with tqdm_joblib(tqdm(total=num_rows, desc="DESPOTIC rows")):
+            results = Parallel(n_jobs=workers)(
+                delayed(solve_row)(row_idx) for row_idx in tasks
+            )
+    else:
+        results = Parallel(n_jobs=workers)(
+            delayed(solve_row)(row_idx) for row_idx in tasks
+        )
+
+    for row_idx, tg_row, failure_row, species_rows, energy_rows, attempts_row in results:
+        tg_table[row_idx, :] = tg_row
+        failure_mask[row_idx, :] = failure_row
+        attempts.extend(attempts_row)
+        for sp, field_map in species_rows.items():
+            buffer = species_buffers[sp]
+            for field, values in field_map.items():
+                buffer[field][row_idx, :] = values
+        for term, values in energy_rows.items():
+            grid = energy_fields.setdefault(
+                term, np.full((num_rows, num_cols), np.nan, dtype=float)
+            )
+            grid[row_idx, :] = values
 
     total_cells = num_rows * num_cols
     failed_cells = int(np.count_nonzero(failure_mask))
@@ -131,6 +217,12 @@ def build_table(
         nH_values=nH_vals,
         col_density_values=col_vals,
         failure_mask=failure_mask,
-        energy_rate=energy_rate,
+        energy_terms=energy_fields or None,
         attempts=tuple(attempts),
     )
+
+
+
+def plot_table(*_args, **_kwargs) -> None:
+    """Placeholder for future plotting utilities."""
+    raise NotImplementedError("plot_table is not implemented yet.")

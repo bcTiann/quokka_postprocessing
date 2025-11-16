@@ -1,10 +1,25 @@
 """ Dataclasses for DESPOTIC lookup tables."""
 
-from __futture__ import annotations
+from __future__ import annotations
 
-from dataclasses import dataclass
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message="collision rates not available",
+    category=UserWarning,
+    module=r"DESPOTIC.*emitterData",
+)
+warnings.filterwarnings(
+    "ignore",
+    message="divide by zero encountered in log",
+    category=RuntimeWarning,
+    module=r"DESPOTIC.*NL99_GC",
+)
+
+from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping, Sequence, Tuple, field
+from typing import Mapping, Sequence, Tuple
 
 import numpy as np
 
@@ -14,8 +29,8 @@ class LogGrid:
     """Defines a logarithmic grid."""
 
     min_value: float
-    max_value: float: float
-    num_points: int     
+    max_value: float
+    num_points: int
 
     def __post_init__(self) -> None:
         if self.min_value <= 0 or self.max_value <= 0:
@@ -35,7 +50,7 @@ class LogGrid:
     
 
 @dataclass(frozen=True)
-class lineLumResult:
+class LineLumResult:
     """
     Line Luminosity output from a single species.
 
@@ -117,16 +132,16 @@ class DespoticTable:
     col_density_values: np.ndarray
     attempts: Tuple[AttemptRecord, ...] = field(default_factory=tuple)
     failure_mask: np.ndarray | None = None
-    energy_rate: np.ndarray | None = None
+    energy_terms: Mapping[str, np.ndarray] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "species_data", MappingProxyType(self.species_data))
-        object.__setattr__(self, "emitter_abundances", MappingProxyType(self.emitter_abundances))
         if self.failure_mask is not None:
             if self.failure_mask.shape != self.tg_final.shape:
                 raise ValueError("failure_mask shape must match tg_final shape.")
-        if self.energy_rate is not None and self.energy_rate.shape != self.tg_final.shape:
-            raise ValueError("energy_rate must match tg_final shape.")
+        if self.energy_terms is not None:
+            object.__setattr__(self, "energy_terms", MappingProxyType(dict(self.energy_terms)))
+
 
     @property
     def species(self) -> Tuple[str, ...]:
