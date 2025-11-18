@@ -9,7 +9,7 @@ YT_DATASET_PATH = "~/quokka_postprocessing/examples/halpha_analysis/plt263168"
 OUTPUT_DIR = "plots/"
 
 # --- Physics Parameters / Model Assumptions ---
-X_H = 0.76  # Mass fraction of Hydrogen
+X_H = 0.74  # Mass fraction of Hydrogen
 A_LAMBDA_OVER_NH = 4e-22 * cm**2  # Dust extinction cross-section (mag * cm^2 / N_H)
 
 # --- Simulation Control ---
