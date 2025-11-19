@@ -3,7 +3,10 @@
 import yt
 import numpy as np
 from yt.units import K, mp, kb, mh, planck_constant, cm, m, s, g, erg
-from quokka2s import *
+import quokka2s as q2s
+from quokka2s.despotic_tables import compute_average
+import config as cfg
+
 
 # --- Fundamental Physical Constants ---
 m_H = mh.in_cgs()
@@ -11,9 +14,47 @@ lambda_Halpha = 656.3e-7 * cm
 h = planck_constant
 speed_of_light_value_in_ms = 299792458 
 c = speed_of_light_value_in_ms * m / s
+TABLE_LOOKUP_CACHE: dict[str, np.ndarray] | None = None
+TABLE_LOOKUP_SPECIES: tuple[str, ...] = ()
 
+
+
+
+def number_density_H(field, data):
+    density_3d, extent = provider.get_slab_z(("gas", "density"))
+    dx_3d, _ = provider.get_slab_z(("boxlib", "dx"))
+    dy_3d, _ = provider.get_slab_z(("boxlib", "dy"))
+    dz_3d, _ = provider.get_slab_z(("boxlib", "dz"))
+
+    n_H_3d = (density_3d * cfg.X_H) / m_H
+
+    return n_H_3d.to('cm**-3')
+
+
+def column_density_H(field, data):
+    density_3d, extent = provider.get_slab_z(("gas", "density"))
+    dx_3d, _ = provider.get_slab_z(("boxlib", "dx"))
+    dy_3d, _ = provider.get_slab_z(("boxlib", "dy"))
+    dz_3d, _ = provider.get_slab_z(("boxlib", "dz"))
+    
+    n_H_3d = (density_3d * cfg.X_H) / m_H
+
+    Nx_p = q2s.along_sight_cumulation(n_H_3d * dx_3d, axis="x", sign="+")
+    Ny_p = q2s.along_sight_cumulation(n_H_3d * dy_3d, axis="y", sign="+")
+    Nz_p = q2s.along_sight_cumulation(n_H_3d * dz_3d, axis="z", sign="+")
+    Nx_n = q2s.along_sight_cumulation(n_H_3d * dx_3d, axis="x", sign="-")
+    Ny_n = q2s.along_sight_cumulation(n_H_3d * dy_3d, axis="y", sign="-")
+    Nz_n = q2s.along_sight_cumulation(n_H_3d * dz_3d, axis="z", sign="-")
+
+    average_N_3d = compute_average(
+        [Nx_p, Ny_p, Nz_p, Nx_n, Ny_n, Nz_n],
+        method="harmonic",
+    )
+    return average_N_3d.to('cm**-2')
 
 # --- YT Derived Fields ---
+
+
 
 def _temp_neutral(field, data):
     """
@@ -29,6 +70,7 @@ def _temp_neutral(field, data):
     
     temp_init = (2.0 / 3.0) * eint / (n * kb)
     return temp_init.to('K')
+
 
 def _temperature(field, data):
     temp_init = data[('gas', 'temp_neutral')]
