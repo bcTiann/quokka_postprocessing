@@ -15,8 +15,8 @@ from quokka2s.pipeline.prep import config as cfg
 cell = cloud()
 
 cell.Tg = 10.0
-cell.nH = 1e-05
-cell.colDen = 1.8420699693267165e+23
+cell.nH = 0.0031622776601683794
+cell.colDen = 5623413251903491.0
 
 
 co_line_map = []
