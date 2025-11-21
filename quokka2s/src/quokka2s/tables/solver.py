@@ -91,6 +91,7 @@ def calculate_single_despotic_point(
     initial_Tg_guesses: Sequence[float],
     *,
     species: Sequence[str] = DEFAULT_SPECIES,
+    abundance_only: Sequence[str] = ("e-", ),
     chem_network=NL99_GC,
     log_failures: bool = True,
     row_idx: int | None = None,
@@ -180,8 +181,9 @@ def calculate_single_despotic_point(
                 converged = cell.setChemEq(
                     network=chem_network,
                     evolveTemp="iterateDust",
+                    addEmitters=True,
                     tol=1e-6,
-                    maxTime=1e16,
+                    maxTime=1e22,
                     maxTempIter=50,
                 )
             _log_despotic_stdout(stdout_buffer)

@@ -20,14 +20,20 @@ class HalphaNoDustTask(AnalysisTask):
         self._lum_3d = None
         self._dx_3d = None
         self._extent = None
+        self._table_lookup = None
+        self._table_inputs = None
 
     def prepare(self, context: PipelinePlotContext) -> None:
         provider = context.provider
         self._lum_3d, self._extent = provider.get_slab_z(("gas", "Halpha_luminosity"))
         self._dx_3d, _ = provider.get_slab_z(("boxlib", "dx"))
+        
 
     def compute(self, context: PipelinePlotContext):
+
         surface_brightness = np.sum(self._lum_3d * self._dx_3d, axis=self.axis_idx)
+        ####### last night work #######
+
         context.results["halpha_no_dust"] = surface_brightness
         context.results["halpha_extent"] = self._extent
         return {"map": surface_brightness, "extent": self._extent[self.axis]}

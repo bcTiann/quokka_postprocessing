@@ -10,6 +10,7 @@ from .models import (
 from .builder import build_table, plot_table
 from .io import load_table, save_table
 from .diagnostics import plot_failure_overlay, summarize_failures, plot_sampling_histogram
+from .lookup import TableLookup
 from .plotting import plot_table_overview
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "SpeciesLineGrid",
     "AttemptRecord",
     "DespoticTable",
+    "TableLookup",
     "build_table",
     "save_table",
     "load_table",

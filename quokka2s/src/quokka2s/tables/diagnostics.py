@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 
 from .models import DespoticTable
 
@@ -13,6 +14,16 @@ def summarize_failures(*_args, **_kwargs) -> None:
     """Placeholder for failure summary helper."""
     raise NotImplementedError("summarize_failures is not implemented yet.")
 
+def _log_edges(values: np.ndarray) -> np.ndarray:
+    if values.size < 2:
+          raise ValueError("Need at least two grid points to compute edges.")
+    log_values = np.log10(values)
+    deltas = np.diff(log_values)
+    edges = np.empty(values.size + 1, dtype=float)
+    edges[1:-1] = log_values[:-1] + deltas / 2.0
+    edges[0] = log_values[0] - deltas[0] / 2.0
+    edges[-1] = log_values[-1] + deltas[-1] / 2.0
+    return edges
 
 
 def plot_sampling_histogram(
@@ -23,77 +34,71 @@ def plot_sampling_histogram(
         cmap: str = "viridis",
         log_space: bool = True,
 ) -> plt.Axes:
-    """Plot a histogram showing the sampling density of given samples in the table.
-
-    Parameters:
-        table: DespoticTable
-            The DESPOTIC table to reference for sampling density.
-        samples: np.ndarray
-            An array of shape (N, 2) containing N samples of (nH, column density).
-        ax: plt.Axes | None
-            The axes to plot on. If None, a new figure and axes will be created.
-        cmap: str
-            The colormap to use for the histogram.
-        log_space: bool
-            if True, samples are already in log10 space. If False, samples are in linear space and will be applied to log10.
-    Returns:
-        plt.Axes
-            The axes containing the histogram plot.
-    """
-
+    """Plot simulation sampling density per table cell, matching raw-table coverage plot."""
     if samples.ndim != 2 or samples.shape[1] != 2:
         raise ValueError("samples must be a 2D array with shape (N, 2)")
-    
 
-    nH_vals = np.log10(table.nH_values) if log_space else table.nH_values
-    col_vals = np.log10(table.col_density_values) if log_space else table.col_density_values
-
-    data = samples.copy()
+    logged = np.asarray(samples, dtype=float)
     if not log_space:
-        data = np.log10(data)
-    
-    bins = (np.append(nH_vals, nH_vals[-1] + np.diff(nH_vals).mean()),
-                np.append(col_vals, col_vals[-1] + np.diff(col_vals).mean()))
+        with np.errstate(divide="ignore"):
+            logged = np.log10(logged)
 
-    hist, _, _ = np.histogram2d(
-        data[:, 0],
-        data[:, 1],
-        bins=bins,
+    finite_mask = np.all(np.isfinite(logged), axis=1)
+    if not np.any(finite_mask):
+        raise ValueError("No finite sample pairs available for histogramming.")
+
+    nH_edges_log = _log_edges(table.nH_values)
+    col_edges_log = _log_edges(table.col_density_values)
+
+    counts, _, _ = np.histogram2d(
+        logged[finite_mask, 0],
+        logged[finite_mask, 1],
+        bins=[nH_edges_log, col_edges_log],
     )
+    counts = counts.astype(float)
+
+    nH_edges = np.power(10.0, nH_edges_log)
+    col_edges = np.power(10.0, col_edges_log)
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 5))
+        fig, ax = plt.subplots(figsize=(8, 6))
+    else:
+        fig = ax.get_figure()
+
+    norm = None
+    positive = counts[counts > 0]
+    if positive.size:
+        norm = LogNorm(vmin=positive.min(), vmax=positive.max())
+
     mesh = ax.pcolormesh(
-        nH_vals,
-        col_vals,
-        hist.T,
-        cmap=cmap,
+        col_edges,
+        nH_edges,
+        counts,
         shading="auto",
+        cmap=cmap,
+        norm=norm,
     )
-    ax.set_xlabel("log10 nH [cm^-3]")
-    ax.set_ylabel("log10 N_H [cm^-2]")
-    fig = ax.get_figure()
-    fig.colorbar(mesh, ax=ax, label="Counts")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Column Density (cm$^{-2}$)")
+    ax.set_ylabel("n$_\\mathrm{H}$ (cm$^{-3}$)")
+    ax.set_title("Simulation Sampling vs Raw Table Coverage")
+
+    cbar = fig.colorbar(mesh, ax=ax)
+    cbar.set_label("Voxel count per table cell")
 
     if table.failure_mask is not None:
-        print("Overlaying failure regions...")
-        mask = np.ma.masked_where(~table.failure_mask, table.failure_mask)
-        overlay = np.where(table.failure_mask, 1.0, np.nan)
-        ax.imshow(
-            overlay.T,
-            origin="lower",
-            aspect="auto",
-            cmap="Reds",
-            alpha=0.8,
-            vmin=0.0,
-            vmax=1.0,
-            extent=[
-                nH_vals[0],
-                nH_vals[-1],
-                col_vals[0],
-                col_vals[-1],
-            ],
+        overlay = np.ma.masked_where(~table.failure_mask, np.ones_like(table.failure_mask, dtype=float))
+        ax.pcolormesh(
+            col_edges,
+            nH_edges,
+            overlay,
+            shading="auto",
+            cmap=plt.cm.Greys,
+            alpha=0.4,
+            vmin=0,
+            vmax=1,
         )
-    return ax
 
+    return ax
 

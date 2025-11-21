@@ -8,15 +8,15 @@ from despotic.chemistry import NL99, NL99_GC, GOW
 from despotic import cloud
 from tqdm import tqdm 
 import time
-import config as cfg
+from quokka2s.pipeline.prep import config as cfg
 # import yt
 
 
 cell = cloud()
 
-cell.Tg = 4082
-cell.nH = 562.341325190349
-cell.colDen = 1.7782794100389228e+23
+cell.Tg = 10.0
+cell.nH = 1e-05
+cell.colDen = 1.8420699693267165e+23
 
 
 co_line_map = []
@@ -48,7 +48,7 @@ cell.comp.computeDerived(cell.nH)
 
 # --- 執行核心計算 ---
 print("-------set Temp Eq --------")
-cell.setTempEq()
+# cell.setTempEq()
 print(f"mu = {cell.comp.mu}")
 print(f"Tg = {cell.Tg}")
 print(f"Td = {cell.Td}")
@@ -59,13 +59,16 @@ converged = cell.setChemEq(
     network=NL99_GC,
     evolveTemp="iterateDust",
     tol=1e-6,
-    maxTime=1e16,
+    maxTime=1e22,
     maxTempIter=50,
 )
+
 duration = time.time() - attempt_start
 final_Tg = cell.Tg
-print(f"final={final_Tg:.3g} K | converged={converged} | time={duration:.2f}s")
 
+print("+++++++++++++++++++++++++++++++++++++++++")
+print(f"final={final_Tg:.3g} K | converged={converged} | time={duration:.2f}s")
+print("+++++++++++++++++++++++++++++++++++++++++")
 
 # --- 處理計算結果 ---
 print(f"abundances final: {cell.chemnetwork.abundances}")
@@ -79,24 +82,40 @@ print(f"cell emitters: {cell.emitters}")
 print("Adding CO emitter...")
 cell.addEmitter("CO", cell.chemabundances["CO"])
 cell.addEmitter("C+", cell.chemabundances["C+"])
+cell.addEmitter("C", cell.chemabundances["C"])
 cell.addEmitter("HCO+", cell.chemabundances["HCO+"])
+cell.addEmitter("O", cell.chemabundances["O"])
 
 print(cell.emitters)             # => {'CO': <despotic.emitter.emitter object at 0x...>}
-print(cell.emitters['CO'].abundance)  # => 0.0001999439...
-print(cell.emitters['C+'].abundance)
-print(cell.emitters['HCO+'].abundance)
-print(cell.chemabundances["e-"])
+print(f"abundance CO: {cell.emitters['CO'].abundance}")  # => 0.0001999439...
+print(f"abundance C+: {cell.emitters['C+'].abundance}")
+print(f"abundance C: {cell.emitters['C'].abundance}")
+print(f"abundance HCO+: {cell.emitters['HCO+'].abundance}")
+print(f"abundance O: {cell.emitters['O'].abundance}")
+print(f"abundance e-: {cell.chemabundances['e-']} ")
 
 print("\n")
 print("Calculating line luminosities...")
-lines = cell.lineLum
-print(lines)
+lines = cell.lineLum("CO")[0]["lumPerH"]
+print(f"CO lumPerH = {lines}")
+
+lines = cell.lineLum("O")[0]["lumPerH"]
+print(f"O lumPerH = {lines}")
+
+lines = cell.lineLum("HCO+")[0]["lumPerH"]
+print(f"HCO+ lumPerH = {lines}")
+
+# lines = cell.lineLum("H")[0]["lumPerH"]
+# print(f"H lumPerH = {lines}")
+
+lines = cell.lineLum("C")[0]["lumPerH"]
+print(f"C lumPerH = {lines}")
 # co_int_TB = lines[0]["intTB"]
 # co_line_map.append(co_int_TB)
 
 
 # print(f"co_line_map = {co_line_map}")
-# print(f"Tg final = {final_Tg}")
+print(f"Tg final = {cell.Tg}")
 # lines = cell.lineLum("C+")
 # cp_int_TB = lines[0]["intTB"]
 # print(f"C+_line_map = {cp_int_TB}")

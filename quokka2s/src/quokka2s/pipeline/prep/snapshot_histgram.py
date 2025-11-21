@@ -3,15 +3,15 @@ import matplotlib.pyplot as plt
 from quokka2s.tables import load_table, plot_sampling_histogram
 import yt
 from yt.units import mh
-import config as cfg
+from quokka2s.pipeline.prep import config as cfg
 import quokka2s as q2s
-import physics_models as phys
+from quokka2s.pipeline.prep import physics_fields as phys
 from quokka2s.despotic_tables import compute_average
 
 
 
 
-table = load_table("/Users/baochen/quokka_postprocessing/output_tables_new/despotic_table.npz")
+table = load_table("/Users/baochen/quokka_postprocessing/output_tables_testSmall/despotic_table.npz")
 
 
 ds = yt.load(cfg.YT_DATASET_PATH)

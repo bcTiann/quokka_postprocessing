@@ -23,13 +23,15 @@ from .solver import LINE_RESULT_FIELDS, calculate_single_despotic_point
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_LINE_RESULT = LineLumResult(*([float("nan")] * len(LINE_RESULT_FIELDS)))
+ABUNDANCE_ONLY_SPECIES = ("e-",)
 
 def build_table(
     nH_grid: LogGrid,
     col_grid: LogGrid,
     tg_guesses: Sequence[float],
     *,
-    species: Sequence[str] = ("CO", "C+", "HCO+"),
+    species: Sequence[str],
+    abundance_only: Sequence[str],
     chem_network=NL99_GC,
     show_progress: bool = True,
     workers: int | None = None,
@@ -60,6 +62,7 @@ def build_table(
     """
 
     species = tuple(species)
+    abundance_only = tuple(abundance_only)
 
     nH_vals = nH_grid.sample()
     col_vals = col_grid.sample()
@@ -88,6 +91,7 @@ def build_table(
         col_vals: np.ndarray,
         tg_guesses: Sequence[float],
         species: Sequence[str],
+        abundance_only: Sequence[str],
         chem_network,
     ) -> tuple[int, np.ndarray, np.ndarray, dict[str, dict[str, np.ndarray]], dict[str, np.ndarray], list[AttemptRecord]]:
         tg_row = np.full(col_vals.shape, np.nan, dtype=float)
@@ -96,18 +100,10 @@ def build_table(
             sp: {field: np.full(col_vals.shape, np.nan, dtype=float) for field in buffer_fields}
             for sp in species
         }  
-        warnings.filterwarnings(
-            "ignore",
-            message="collision rates not available",
-            category=UserWarning,
-            module=r"DESPOTIC.*emitterData",
-        )
-        warnings.filterwarnings(
-            "ignore",
-            message="divide by zero encountered in log",
-            category=RuntimeWarning,
-            module=r"DESPOTIC.*NL99_GC",
-    )
+        abundance_rows: dict[str, np.ndarray] = {
+            sp: np.full(col_vals.shape, np.nan, dtype=float)
+            for sp in abundance_only
+        }
 
         def _flatten_energy(term_name: str, value, target: dict[str, np.ndarray], idx: int) -> None:
             if isinstance(value, Mapping):
@@ -127,6 +123,7 @@ def build_table(
                 colDen_val=col_val,
                 initial_Tg_guesses=tg_guesses,
                 species=species,
+                abundance_only=abundance_only,
                 chem_network=chem_network,
                 row_idx=row_idx,
                 col_idx=col_idx,
@@ -143,12 +140,15 @@ def build_table(
                     species_rows[sp][field][col_idx] = getattr(result, field)
                 species_rows[sp]["abundance"][col_idx] = abundances.get(sp, float("nan"))
 
+            for extra in abundance_only:
+                abundance_rows[extra][col_idx] = abundances.get(extra, float("nan"))
+
             # energy terms
             for term, value in energy_terms.items():
                 _flatten_energy(term, value, energy_rows, col_idx)
 
 
-        return row_idx, tg_row, failure_row, species_rows, energy_rows, attempts_row
+        return row_idx, tg_row, failure_row, species_rows, abundance_rows, energy_rows, attempts_row
 
 
     attempts: list[AttemptRecord] = []
@@ -162,11 +162,22 @@ def build_table(
         col_vals=col_vals,      
         tg_guesses=tg_guesses,
         species=species,
+        abundance_only=abundance_only,
         chem_network=chem_network,
     )
 
     if show_progress:
-        with tqdm_joblib(tqdm(total=num_rows, desc="DESPOTIC rows")):
+        progress = tqdm(
+            total=num_rows,
+            desc="DESPOTIC rows",
+            unit="row",
+            dynamic_ncols=True,
+            colour="cyan",
+            mininterval=1.0,
+            smoothing=0.2,
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} {unit}s [{elapsed}<{remaining}]",
+        )
+        with tqdm_joblib(progress):
             results = Parallel(n_jobs=workers)(
                 delayed(solve_row)(row_idx) for row_idx in tasks
             )
@@ -175,7 +186,7 @@ def build_table(
             delayed(solve_row)(row_idx) for row_idx in tasks
         )
 
-    for row_idx, tg_row, failure_row, species_rows, energy_rows, attempts_row in results:
+    for row_idx, tg_row, failure_row, species_rows, extra_rows, energy_rows, attempts_row in results:
         tg_table[row_idx, :] = tg_row
         failure_mask[row_idx, :] = failure_row
         attempts.extend(attempts_row)
@@ -183,6 +194,14 @@ def build_table(
             buffer = species_buffers[sp]
             for field, values in field_map.items():
                 buffer[field][row_idx, :] = values
+                
+        for extra, values in extra_rows.items():
+            buffer = species_buffers.setdefault(extra, {
+                field: np.full((num_rows, num_cols), np.nan, dtype=float)
+                for field in buffer_fields
+            })
+            buffer["abundance"][row_idx, :] = values
+
         for term, values in energy_rows.items():
             grid = energy_fields.setdefault(
                 term, np.full((num_rows, num_cols), np.nan, dtype=float)
