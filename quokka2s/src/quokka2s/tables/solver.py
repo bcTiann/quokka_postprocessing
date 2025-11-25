@@ -97,7 +97,7 @@ def calculate_single_despotic_point(
     row_idx: int | None = None,
     col_idx: int | None = None,
     attempt_log: list[AttemptRecord] | None = None,
-) -> Tuple[Mapping[str, LineLumResult], Mapping[str, float], float, Mapping[str, float], bool]:
+) -> Tuple[Mapping[str, LineLumResult], Mapping[str, float], Mapping[str, float], float, Mapping[str, float], bool]:
     """
     Calculate DESPOTIC line for a single point in (nH, colDen) .
 
@@ -135,6 +135,7 @@ def calculate_single_despotic_point(
 
     last_line_results: dict[str, LineLumResult] = _empty_line_results(species_order)
     last_abundances: dict[str, float] = {sp: float("nan") for sp in species_order}
+    last_chem_abundances: dict[str, float] = {}
     last_energy_terms: dict[str, float] = {}
     last_final_tg = float("nan")
     failed = True
@@ -185,6 +186,8 @@ def calculate_single_despotic_point(
                     maxTime=1e22,
                     maxTempIter=50,
                 )
+            chem_abundances = dict(cell.chemabundances)
+            last_chem_abundances = dict(chem_abundances)
             _log_despotic_stdout(stdout_buffer)
 
             line_results: dict[str, LineLumResult] = {}
@@ -221,6 +224,7 @@ def calculate_single_despotic_point(
             return (
                 MappingProxyType(last_line_results),
                 MappingProxyType(last_abundances),
+                MappingProxyType(last_chem_abundances),
                 last_final_tg,
                 MappingProxyType(last_energy_terms),
                 failed,
@@ -241,16 +245,17 @@ def calculate_single_despotic_point(
                         duration=time.perf_counter() - attempt_start_time,
                     )
             )
-            last_energy_terms = dict(energy_terms)
+
 
     if log_failures:
         LOGGER.warning("All guesses failed for nH=%s colDen=%s", nH_val, colDen_val)
     return (
     MappingProxyType(last_line_results),
     MappingProxyType(last_abundances),
+    MappingProxyType(last_chem_abundances),
     last_final_tg,
     MappingProxyType(last_energy_terms),
-    True,
+    failed,
     )
 
 

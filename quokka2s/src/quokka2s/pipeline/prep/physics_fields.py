@@ -33,6 +33,7 @@ def _number_density_H(field, data):
     return n_H_3d.to('cm**-3')
 
 
+
 def _column_density_H(field, data):
     density_3d = data[('gas', 'density')].in_cgs()
     dx_3d = data[("boxlib", "dx")].in_cgs()
@@ -125,8 +126,9 @@ def _Halpha_luminosity(field, data):
    
     n_e = data[('gas', 'e-')]
     n_ion = data[('gas', 'H+')]
-    n_H = (density_3d * cfg.X_H) / m_H
-
+    # n_H = (density_3d * cfg.X_H) / m_H
+    print("n_e finite?", np.isfinite(n_e).any(), "min/max", n_e.min(), n_e.max())
+    print("n_ion finite?", np.isfinite(n_ion).any(), "min/max", n_ion.min(), n_ion.max())   
     Z = 1.0
     T4 = temp / (1e4 * yt.units.K)
 
@@ -147,9 +149,9 @@ def add_all_fields(ds):
     ds.add_field(name=('gas', 'column_density_H'), function=_column_density_H, sampling_type="cell", units="cm**-2", force_override=True)
     ds.add_field(name=('gas', 'temperature'), function=_temperature, sampling_type="cell", units="K", force_override=True)
     
-    SPECIES = ['H+', 'H2', 'H3+', 'He+', 'OHx', 'CHx', 'CO', 'C', 
-              'C+', 'HCO+', 'O', 'M+', 'H', 'He', 'M', 'e-']
-
+    # SPECIES = ['H+', 'H2', 'H3+', 'He+', 'OHx', 'CHx', 'CO', 'C', 
+    #           'C+', 'HCO+', 'O', 'M+', 'H', 'He', 'M', 'e-']
+    SPECIES = ['H+', 'CO', 'C', 'C+', 'HCO+', 'e-']
     for sp in SPECIES:
         _, func = _make_number_density_field(species=sp)
         ds.add_field(

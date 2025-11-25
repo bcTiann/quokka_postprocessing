@@ -101,6 +101,25 @@ class SpeciesLineGrid:
 
 
 @dataclass(frozen=True)
+class SpeciesRecord:
+    """
+    Unified container for either an emitting species or abundance-only species.
+
+    """
+    name: str
+    abundance: np.ndarray
+    line: SpeciesLineGrid | None
+    is_emitter: bool = False
+
+    def require_line(self) -> SpeciesLineGrid:
+        if self.line is None:
+            raise ValueError(f"Species '{self.name}' has no line data.")
+        return self.line
+    
+
+
+
+@dataclass(frozen=True)
 class AttemptRecord:
     """
     Record of a single DESPOTIC attempt
@@ -126,42 +145,51 @@ class DespoticTable:
 
     """
 
-    species_data: Mapping[str, SpeciesLineGrid]
+    species_data: Mapping[str, SpeciesRecord]
     tg_final: np.ndarray
     nH_values: np.ndarray
     col_density_values: np.ndarray
-    attempts: Tuple[AttemptRecord, ...] = field(default_factory=tuple)
     failure_mask: np.ndarray | None = None
     energy_terms: Mapping[str, np.ndarray] | None = None
+    attempts: Tuple[AttemptRecord, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "species_data", MappingProxyType(self.species_data))
+        object.__setattr__(self, "species_data", MappingProxyType(dict(self.species_data)))
         if self.failure_mask is not None:
             if self.failure_mask.shape != self.tg_final.shape:
                 raise ValueError("failure_mask shape must match tg_final shape.")
         if self.energy_terms is not None:
             object.__setattr__(self, "energy_terms", MappingProxyType(dict(self.energy_terms)))
 
-
     @property
     def species(self) -> Tuple[str, ...]:
         return tuple(self.species_data.keys())
+        # In this way you can table.species to get all species instead of table.species()
     
-    def require_species(self, species: str) -> tuple[str, SpeciesLineGrid]:
-        if not self.species:
-            raise ValueError("DespoticTable contains no species data.")
-        if species not in self.species_data:
-            available = ", ".join(self.species_data.keys())
-            raise ValueError(f"Species '{species}' not found in DespoticTable. Available species: {available}.")
-        return species, self.species_data[species]
+    @property
+    def abundances(self) -> Mapping[str, np.ndarray]:
+        return {name: record.abundance for name, record in self.species_data.items()}
+
+    def require_species(self, name: str) -> SpeciesRecord:
+        record = self.species_data.get(name)
+        if record is None:
+            available = ", ".join(self.species)
+            raise ValueError(
+                f"Requested species '{name}' not found; availablespecies: {available}"
+            )
+        return record
+    
+
     
     def clone_species_fields(self) -> dict[str, dict[str, np.ndarray]]:
         field_map: dict[str, dict[str, np.ndarray]] = {}
-        for name, grid in self.species_data.items():
-            field_map[name] = {
-                field: np.array(getattr(grid, field), copy=True)
-                for field in ("freq", "intIntensity", "intTB", "lumPerH", "tau", "tauDust")
-            }
+        for name, record in self.species_data.items():
+            if record.line is None:
+                continue
+            buffers: dict[str, np.ndarray] = {}
+            for field in ("freq", "intIntensity", "intTB", "lumPerH", "tau", "tauDust"):
+                buffers[field] = np.array(getattr(record.line, field), copy=True)
+            field_map[name] = buffers
         return field_map
     
 

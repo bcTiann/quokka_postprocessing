@@ -32,23 +32,23 @@ class HalphaNoDustTask(AnalysisTask):
     def compute(self, context: PipelinePlotContext):
 
         surface_brightness = np.sum(self._lum_3d * self._dx_3d, axis=self.axis_idx)
-        ####### last night work #######
-
+        if not np.isfinite(surface_brightness).any():
+            raise RuntimeError("halpha_no_dust map has no finite values")
         context.results["halpha_no_dust"] = surface_brightness
         context.results["halpha_extent"] = self._extent
         return {"map": surface_brightness, "extent": self._extent[self.axis]}
     
 
     def plot(self, context: PipelinePlotContext, results):
-        pass
-        # output = self.config.output_dir / "halpha_no_dust_shared.png"
-        # create_plot(
-        #     data_2d=results["map"].T.to_ndarray(),
-        #     title="H-alpha (No Dust)",
-        #     cbar_label=f"Surface Brightness ({results['map'].units})",
-        #     filename=str(output),
-        #     extent=results["extent"],
-        #     xlabel=self.xlabel,
-        #     ylabel=self.ylabel,
-        #     norm=self.config.extra_options.get("halpha_norm"),
-        # )
+        # pass
+        output = self.config.output_dir / "halpha_no_dust_shared.png"
+        create_plot(
+            data_2d=results["map"].T.to_ndarray(),
+            title="H-alpha (No Dust)",
+            cbar_label=f"Surface Brightness ({results['map'].units})",
+            filename=str(output),
+            extent=results["extent"],
+            xlabel=self.xlabel,
+            ylabel=self.ylabel,
+            norm=self.config.extra_options.get("halpha_norm"),
+        )

@@ -225,48 +225,6 @@ class YTDataProvider:
         return data_slab, extents
 
 
-    # def get_cubic_box_pixel(self,
-    #                   field: Tuple[str, str],
-    #                   box_size: Optional[int] = None,
-    #                   box_center: Optional[Tuple[int, int, int]] = None):
-    #     print("Step 1: Loading the entire grid into memory (this may take a while)...")
-    #     full_grid_data = self.get_grid_data(field=field)
-    #     nx, ny, nz = full_grid_data.shape
-
-    #     if box_center is None:
-    #         center_x_idx, center_y_idx, center_z_idx = nx // 2, ny // 2, nz // 2
-    #         center = self.ds.domain_center
-    #         print(f" center = {center}")
-    #         print(f"box_center not provided, using geometric center ({center_x_idx}, {center_y_idx}, {center_z_idx}).")
-    #     else: 
-    #         center_x_idx, center_y_idx, center_z_idx = box_center
-    #         print(f"Using user-provided box_center ({center_x_idx}, {center_y_idx}, {center_z_idx}).")
-
-    #     print("++++++++++++++++++++++++DEBUG+++++++++++++++++++++")
-    #     print(f"nx = {nx}")
-    #     if box_size is None:
-    #         box_size = np.min(full_grid_data.shape)
-    #     print("++++++++++++++++++++++++DEBUG+++++++++++++++++++++")
-    #     print(f"box_size = {box_size}")
-    #     half_size = box_size // 2
-
-    #     start_x = max(0, center_x_idx - half_size)
-    #     end_x   = min(nx, center_x_idx + half_size)
-
-    #     start_y = max(0, center_y_idx - half_size)
-    #     end_y   = min(ny, center_y_idx + half_size)
-
-    #     start_z = max(0, center_z_idx - half_size)
-    #     end_z   = min(nz, center_z_idx + half_size)
-
-    #     print(f"Step 3: Calculated slice indices: X({start_x}:{end_x}), Y({start_y}:{end_y}), Z({start_z}:{end_z})")
-    #     center_cube_data = full_grid_data[start_x:end_x, start_y:end_y, start_z:end_z]
-    #     print(f"--- Slicing complete. Final cube shape: {center_cube_data.shape} ---")
-    #     extent = 0
-    #     return center_cube_data, extent
-
-
-
 
     def get_projection(self,
                        field: Tuple[str, str],

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from typing import Mapping, Sequence
-from .models import DespoticTable
+from typing import Sequence
+
+from .models import DespoticTable, SpeciesRecord
+from .solver import LINE_RESULT_FIELDS
 
 
 class TableLookup:
@@ -14,14 +16,17 @@ class TableLookup:
         log_nH = np.log10(table.nH_values)
         log_col = np.log10(table.col_density_values)
         self._axes = (log_nH, log_col)
-        ############################################################
-        # Created a dict, which must be {key: str, value: RegularGridInterpolator}
         self._interpolators: dict[str, RegularGridInterpolator] = {}
-        ############################################################
+        self._species_meta: dict[str, SpeciesRecord] = dict(table.species_data)
         self._register_field("tg_final", table.tg_final)
-        for name, grid in table.species_data.items():
-            self._register_field(f"species:{name}:lumPerH", grid.lumPerH)
-            self._register_field(f"species:{name}:abundance", grid.abundance)
+        for name, record in self._species_meta.items():
+            self._register_field(f"species:{name}:abundance", record.abundance)
+            if record.is_emitter and record.line is not None:
+                for field in LINE_RESULT_FIELDS:
+                    values = getattr(record.line, field)
+                    self._register_field(f"species:{name}:line:{field}", values)
+                # Preserve backward compatibility for lumPerH token users
+                self._register_field(f"species:{name}:lumPerH", record.line.lumPerH)
         if table.energy_terms:
             for term, values in table.energy_terms.items():
                 self._register_field(f"energy:{term}", values)
@@ -31,7 +36,7 @@ class TableLookup:
             self._axes,
             np.asarray(values, dtype=float),
             method="linear",
-            bounds_error=True,
+            bounds_error=False,
         )
     
     def _eval(
@@ -49,11 +54,9 @@ class TableLookup:
         return values.reshape(nH_cgs.shape)
     
     def temperature(self, nH_cgs: np.ndarray, colDen_cgs: np.ndarray) -> np.ndarray:
-        """Interpolates the final gas temperature (Tg_final).
-
-        """
+        """Interpolates the final gas temperature (Tg_final)."""
         return self._eval("tg_final", nH_cgs, colDen_cgs)
-    
+
     def abundance(
         self,
         species: str, 
@@ -109,3 +112,26 @@ class TableLookup:
             sp: n_H_cgs * self.abundance(sp, n_H_cgs, colDen_cgs)
             for sp in species
         }
+
+    def line_field(
+        self,
+        species: str,
+        field_name: str,
+        nH_cgs: np.ndarray,
+        colDen_cgs: np.ndarray,
+    ) -> np.ndarray:
+        """Interpolate a specific line property for an emitting species."""
+        record = self._species_meta.get(species)
+        if record is None or not record.is_emitter or record.line is None:
+            raise ValueError(f"Species '{species}' has no line data registered")
+        if field_name not in LINE_RESULT_FIELDS:
+            raise ValueError(f"Unknown line field '{field_name}'. Expected one of {LINE_RESULT_FIELDS}")
+        token = f"species:{species}:line:{field_name}"
+        return self._eval(token, nH_cgs, colDen_cgs)
+
+    def species_record(self, species: str) -> SpeciesRecord:
+        """Return the cached SpeciesRecord for metadata queries."""
+        if species not in self._species_meta:
+            available = ", ".join(self._species_meta)
+            raise ValueError(f"Species '{species}' not found. Available species: {available}")
+        return self._species_meta[species]
