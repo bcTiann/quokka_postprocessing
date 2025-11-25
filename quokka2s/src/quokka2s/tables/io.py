@@ -21,10 +21,10 @@ from typing import Iterable, Mapping
 
 import numpy as np
 
-from .models import AttemptRecord, DespoticTable, SpeciesLineGrid
+from .models import AttemptRecord, DespoticTable, SpeciesLineGrid, SpeciesRecord
 
-TABLE_VERSION = 1
-_SPECIES_FIELDS = ("freq", "intIntensity", "intTB", "lumPerH", "tau", "tauDust", "abundance")
+TABLE_VERSION = 2
+_LINE_FIELDS = ("freq", "intIntensity", "intTB", "lumPerH", "tau", "tauDust")
 
 
 def _attempts_to_array(attempts: Iterable[AttemptRecord]) -> np.ndarray:
@@ -84,12 +84,14 @@ def save_table(table: DespoticTable, path: str | Path) -> None:
         "tg_final": np.array(table.tg_final),
         "failure_mask": np.asarray(table.failure_mask) if table.failure_mask is not None else None,
         "species_names": np.array(table.species, dtype=object),
+        "species_is_emitter": np.array([table.species_data[name].is_emitter for name in table.species], dtype=np.bool_),
         "attempts": _attempts_to_array(table.attempts),
     }
-    for species, grid in table.species_data.items():
-        for field in _SPECIES_FIELDS:
-            payload[f"{species}_{field}"] = getattr(grid, field)
-            # e.g., "CO_freq", "C+_intTB", etc.
+    for species, record in table.species_data.items():
+        payload[f"{species}_abundance"] = np.array(record.abundance)
+        if record.is_emitter and record.line is not None:
+            for field in _LINE_FIELDS:
+                payload[f"{species}_{field}"] = np.array(getattr(record.line, field))
     if table.energy_terms:
         payload["energy_term_names"] = np.array(list(table.energy_terms.keys()), dtype=object)
         for name, grid in table.energy_terms.items():
@@ -124,13 +126,23 @@ def load_table(path: str | Path) -> DespoticTable:
         }
 
     species_names = [str(x) for x in blob["species_names"]]
-    species_data: dict[str, SpeciesLineGrid] = {}
-    for name in species_names:
-        fields: Mapping[str, np.ndarray] = {
-            field: np.array(blob[f"{name}_{field}"], dtype=float)
-            for field in _SPECIES_FIELDS
-        }
-        species_data[name] = SpeciesLineGrid(**fields)
+    emitter_flags = np.array(blob["species_is_emitter"], dtype=bool)
+    species_data: dict[str, SpeciesRecord] = {}
+    for name, is_emitter in zip(species_names, emitter_flags):
+        abundance = np.array(blob[f"{name}_abundance"], dtype=float)
+        line_grid = None
+        if is_emitter:
+            fields: Mapping[str, np.ndarray] = {
+                field: np.array(blob[f"{name}_{field}"], dtype=float)
+                for field in _LINE_FIELDS
+            }
+            line_grid = SpeciesLineGrid(**fields, abundance=abundance)
+        species_data[name] = SpeciesRecord(
+            name=name,
+            abundance=abundance,
+            line=line_grid,
+            is_emitter=bool(is_emitter),
+        )
         
     attempts = _attempts_from_array(blob["attempts"])
 
