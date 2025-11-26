@@ -14,7 +14,7 @@ import numpy as np
 from joblib import Parallel, delayed
 from tqdm import tqdm
 from tqdm_joblib import tqdm_joblib
-from despotic.chemistry import NL99_GC
+from despotic.chemistry import NL99, NL99_GC
 
 from .models import (
     AttemptRecord,
@@ -52,7 +52,7 @@ def build_table(
     tg_guesses: Sequence[float],
     *,
     species_specs: Sequence[SpeciesSpec],
-    chem_network=NL99_GC,
+    chem_network=NL99,
     show_progress: bool = True,
     workers: int | None = None,
 ) -> DespoticTable:

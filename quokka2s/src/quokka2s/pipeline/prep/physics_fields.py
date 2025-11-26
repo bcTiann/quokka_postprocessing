@@ -93,6 +93,22 @@ def _temperature(field, data):
 
 #     return number_density_electron * cm**-3
 
+def _make_luminosity_field(species: str):
+    lookup = ensure_table_lookup(cfg.DESPOTIC_TABLE_PATH)
+    token = species
+    yt_safe_name = species.replace('+', '_plus').replace('-','_minus')
+    def _field(field, data):
+        n_H = data[('gas','number_density_H')].to('cm**-3').value
+        colDen_H = data[('gas','column_density_H')].to('cm**-2').value
+        nH_min, nH_max = lookup.table.nH_values.min(), lookup.table.nH_values.max()
+        col_min, col_max = lookup.table.col_density_values.min(), lookup.table.col_density_values.max()
+        n_H_safe = np.clip(n_H, nH_min, nH_max)
+        col_safe = np.clip(colDen_H, col_min, col_max)
+        lumPerH = lookup.line_field(species, "lumPerH", n_H_safe, col_safe)
+        return (n_H_safe * lumPerH) * (erg / s / cm**3)
+    _field.__name__ = f"_luminosity_{yt_safe_name}"
+    return yt_safe_name, _field
+
 def _make_number_density_field(species: str):
     print("============================") 
     lookup = ensure_table_lookup(cfg.DESPOTIC_TABLE_PATH)
@@ -151,7 +167,8 @@ def add_all_fields(ds):
     
     # SPECIES = ['H+', 'H2', 'H3+', 'He+', 'OHx', 'CHx', 'CO', 'C', 
     #           'C+', 'HCO+', 'O', 'M+', 'H', 'He', 'M', 'e-']
-    SPECIES = ['H+', 'CO', 'C', 'C+', 'HCO+', 'e-']
+    SPECIES = ['H+', 'CO', 'C', 'C+', 'e-']
+    EMITTERS = ['CO', 'C+', 'HCO+']
     for sp in SPECIES:
         _, func = _make_number_density_field(species=sp)
         ds.add_field(
@@ -161,5 +178,16 @@ def add_all_fields(ds):
             units="cm**-3", 
             force_override=True
         )
+
+    for em in EMITTERS:
+        _, lum_func = _make_luminosity_field(species=em)
+        ds.add_field(
+            name=('gas', f'{em}_luminosity'), 
+            function=lum_func, 
+            sampling_type="cell", 
+            units="erg/s/cm**3",
+            force_override=True
+        )
+        
     ds.add_field(name=('gas', 'Halpha_luminosity'), function=_Halpha_luminosity, sampling_type="cell", units="erg/s/cm**3", force_override=True)
     print("Added derived fields: 'temp_neutral', 'temperature', 'ionized_mask', 'Halpha_luminosity'.")

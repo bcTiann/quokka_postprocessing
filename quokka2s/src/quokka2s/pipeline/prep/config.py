@@ -4,7 +4,7 @@ from yt.units import K, mp, kb, mh, planck_constant, cm, m, s, g, erg
 
 # --- Input/Output ---
 YT_DATASET_PATH = "~/quokka_postprocessing/examples/halpha_analysis/plt263168"
-DESPOTIC_TABLE_PATH = "/Users/baochen/quokka_postprocessing/output_tables_testSmall/despotic_table.npz"
+DESPOTIC_TABLE_PATH = "/Users/baochen/quokka_postprocessing/output_tables_testBig/despotic_table.npz"
 OUTPUT_DIR = "plots/"
 
 # --- Physics Parameters / Model Assumptions ---

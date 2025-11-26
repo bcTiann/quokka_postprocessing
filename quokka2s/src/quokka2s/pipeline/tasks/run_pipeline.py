@@ -9,9 +9,8 @@ from quokka2s.pipeline.prep import config as cfg
 from quokka2s.pipeline.prep import physics_fields as phys
 from quokka2s.pipeline.tasks import (
     DensityProjectionTask,
-    HalphaComparisonTask,
-    HalphaNoDustTask,
-    HalphaWithDustTask,
+    HalphaTask,
+    EmitterTask,
 )
 
 
@@ -29,10 +28,11 @@ def build_pipeline() -> Pipeline:
     )
 
     pipeline = Pipeline(pipeline_config)
-    pipeline.register_task(DensityProjectionTask(pipeline_config, axis="x"))
-    pipeline.register_task(HalphaNoDustTask(pipeline_config, axis="x"))
-    pipeline.register_task(HalphaWithDustTask(pipeline_config, axis="x"))
-    pipeline.register_task(HalphaComparisonTask(pipeline_config, axis="x"))
+    # pipeline.register_task(DensityProjectionTask(pipeline_config, axis="x", figure_units='kpc'))
+    # pipeline.register_task(HalphaTask(pipeline_config, axis="x", figure_units='kpc'))
+    pipeline.register_task(EmitterTask(pipeline_config, axis="x", figure_units='kpc'))
+    # pipeline.register_task(HalphaWithDustTask(pipeline_config, axis="x"))
+    # pipeline.register_task(HalphaComparisonTask(pipeline_config, axis="x"))
     return pipeline
 
 

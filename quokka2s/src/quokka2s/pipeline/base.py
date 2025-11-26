@@ -49,6 +49,7 @@ class PipelineConfig:
     figure_units: str = "pc"
     projection_axis: str = "x",
     field_setup: Optional[Callable[[yt.Dataset], None]] = None
+    extra_options: Dict[str, Any] = field(default_factory=dict)
 
     def load_dataset(self) -> yt.Dataset:
         """Load the yt dataset and register derived fields if requested."""

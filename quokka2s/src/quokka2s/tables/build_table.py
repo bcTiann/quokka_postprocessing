@@ -21,12 +21,12 @@ SPECIES_SPECS = (
     SpeciesSpec("HCO+", True),
     SpeciesSpec("O", True),
     SpeciesSpec("e-", False),
-    SpeciesSpec("H+", False),
+    # SpeciesSpec("H+", False),
 )
 
 
 table = build_table(nH_grid, col_grid, tg_guesses, species_specs=SPECIES_SPECS, show_progress=True, workers=-1)
-output_dir = Path("output_tables_testSmall")
+output_dir = Path("output_tables_testNL99")
 output_dir.mkdir(parents=True, exist_ok=True)
 save_table(table, output_dir / "despotic_table.npz")
 

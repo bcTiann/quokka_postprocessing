@@ -11,7 +11,7 @@ from quokka2s.despotic_tables import compute_average
 
 
 
-table = load_table("/Users/baochen/quokka_postprocessing/output_tables_Nov26/despotic_table.npz")
+table = load_table("/Users/baochen/quokka_postprocessing/output_tables_testBig/despotic_table.npz")
 
 
 ds = yt.load(cfg.YT_DATASET_PATH)
@@ -98,7 +98,10 @@ log_samples = np.column_stack(
         np.log10(col_den_array[finite_mask]),
     )
 )
+np.save("log_samples.npy", log_samples)
+
 ax = plot_sampling_histogram(table, log_samples, log_space=True)
+
 ax.set_title("Snapshot sampling vs DESPOTIC failures")
 plt.savefig("snapshot_hist.png", dpi=800)
 plt.show()

@@ -21,8 +21,18 @@ from typing import Iterable, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .models import DespoticTable, SpeciesLineGrid
+from .models import DespoticTable
 
+def _log_edges(values: np.ndarray) -> np.ndarray:
+    if values.size < 2:
+        raise ValueError("Need at least two grid points to compute edges.")
+    log_values = np.log10(values)
+    deltas = np.diff(log_values)
+    edges = np.empty(values.size + 1, dtype=float)
+    edges[1:-1] = log_values[:-1] + deltas / 2.0
+    edges[0] = log_values[0] - deltas[0] / 2.0
+    edges[-1] = log_values[-1] + deltas[-1] / 2.0
+    return edges
 
 def _get_field_data(table: DespoticTable, token: str) -> tuple[np.ndarray, str]:
     """Retrieve data array and label for a given field token."""
@@ -39,11 +49,15 @@ def _get_field_data(table: DespoticTable, token: str) -> tuple[np.ndarray, str]:
     
     if token.startswith("species:"):
         _, spec, field = token.split(":")
-        _, grid = table.require_species(spec)
-        if not hasattr(grid, field):
-            raise ValueError(f"Species field '{field}' not found")
-        return getattr(grid, field), f"{spec}:{field}"
-    
+        record = table.require_species(spec)
+        if field == "abundance":
+            data = record.abundance
+        else:
+            if record.line is None:
+                raise ValueError(f"Species '{spec}' has no line data; cannot plot '{field}'")
+            data = getattr(record.line, field)
+        return data, f"{spec}:{field}"
+        
     raise ValueError(f"Unknown field token: {token}")
 
 DEFAULT_FIELDS: tuple[str, ...] = (
@@ -54,35 +68,68 @@ DEFAULT_FIELDS: tuple[str, ...] = (
     "species:C+:lumPerH",
 )
 
-def _plot_panel(ax, data, title, table, cmap, show_colorbar, fig):
-    im = ax.imshow(
-        data.T,
-        origin="lower",
-        aspect="auto",
+def _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=None):
+    # 对齐 build_despotic_table.py 的绘图风格：对数坐标、掩蔽非正值、叠加失败遮罩
+    nH_edges = np.power(10.0, _log_edges(table.nH_values))
+    col_edges = np.power(10.0, _log_edges(table.col_density_values))
+
+    invalid = ~np.isfinite(data) | (data <= 0)
+    masked = np.ma.masked_array(data, mask=invalid)
+
+    norm = None
+    valid = masked.compressed()
+    if valid.size:
+        norm = plt.cm.colors.LogNorm(vmin=valid.min(), vmax=valid.max())
+
+    mesh = ax.pcolormesh(
+        col_edges,
+        nH_edges,
+        masked,
+        shading="auto",
         cmap=cmap,
-        # extent=[
-        #     math.log10(table.nH_values[0]),
-        #     math.log10(table.nH_values[-1]),
-        #     math.log10(table.col_density_values[0]),
-        #     math.log10(table.col_density_values[-1]),
-        # ],
+        norm=norm,
     )
-
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_aspect("equal")
     ax.set_title(title)
-    ax.set_xlabel("Column Density")
-    ax.set_ylabel("Hydrogen Number Density (cm$^{-3}$)")
-    ax.set_xticks(range(len(table.col_density_values)))
-    ax.set_xticklabels([f"{v:1e}" for v in table.col_density_values], rotation=45, ha="right", fontsize=8)
-    ax.set_yticks(range(len(table.nH_values)))
-    ax.set_yticklabels([f"{v:1e}" for v in table.nH_values], fontsize=8)
-
+    ax.set_xlabel("Column Density (cm$^{-2}$)")
+    ax.set_ylabel("n$_\\mathrm{H}$ (cm$^{-3}$)")
 
     if table.failure_mask is not None:
-        mask = np.ma.masked_where(~table.failure_mask, table.failure_mask)
-        ax.imshow(mask, origin="lower", aspect="auto", cmap="Greys", alpha=0.3)
+        overlay = np.ma.masked_where(~table.failure_mask, np.ones_like(table.failure_mask, dtype=float))
+        ax.pcolormesh(
+            col_edges,
+            nH_edges,
+            overlay,
+            shading="auto",
+            cmap=plt.cm.Greys,
+            alpha=0.35,
+            vmin=0,
+            vmax=1,
+        )
+
+    if samples is not None:
+        samples = np.asarray(samples, dtype=float)
+        if samples.ndim != 2 or samples.shape[1] != 2:
+            raise ValueError("samples must be shape (N, 2) of log10(nH), log10(N_col)")
+        counts, _, _ = np.histogram2d(samples[:, 1], samples[:, 0], bins=[_log_edges(table.nH_values), _log_edges(table.col_density_values)])
+        positive = counts[counts > 0]
+        hist_norm = plt.cm.colors.LogNorm(vmin=positive.min(), vmax=positive.max()) if positive.size else None
+        overlay_hist = np.ma.masked_where(counts <= 0, counts)
+        ax.pcolormesh(
+            col_edges,
+            nH_edges,
+            overlay_hist,
+            shading="auto",
+            cmap=plt.cm.Greys,
+            alpha=0.35,
+            norm=hist_norm,
+        )
 
     if show_colorbar:
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar = fig.colorbar(mesh, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label(title)
 
     
 
@@ -95,6 +142,7 @@ def plot_table_overview(
     cmap: str = "viridis",
     show_colorbar: bool = True,
     separate: bool = False,
+    samples: np.ndarray | None = None,
 ) -> plt.Figure | list[plt.Figure]:
     """Plot an overview of selected fields from a DespoticTable.
 
@@ -125,7 +173,7 @@ def plot_table_overview(
         for token in tokens:
             data, title = _get_field_data(table, token)
             fig, ax = plt.subplots(figsize=figsize)
-            _plot_panel(ax, data, title, table, cmap, show_colorbar, fig)
+            _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=samples)
             figs.append(fig)
         return figs
 
@@ -143,7 +191,7 @@ def plot_table_overview(
         ax = axes[row][col]
 
         data, title = _get_field_data(table, token)
-        _plot_panel(ax, data, title, table, cmap, show_colorbar, fig)
+        _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=samples)
 
 
     # Hide any unused subplots
@@ -153,5 +201,3 @@ def plot_table_overview(
 
     fig.tight_layout()
     return fig
-
-
