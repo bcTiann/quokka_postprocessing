@@ -11,7 +11,7 @@ from quokka2s.despotic_tables import compute_average
 
 
 
-table = load_table("/Users/baochen/quokka_postprocessing/output_tables_testBig/despotic_table.npz")
+table = load_table(cfg.DESPOTIC_TABLE_PATH)
 
 
 ds = yt.load(cfg.YT_DATASET_PATH)

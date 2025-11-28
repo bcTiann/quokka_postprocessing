@@ -33,11 +33,11 @@ def main():
         separate=True,  # 默认每个字段单独一张图
         samples=samples,
     )
-    out_dir = Path("plots/table_overview")
+    out_dir = Path("plots/table_overview_NL99")
     out_dir.mkdir(parents=True, exist_ok=True)
     for token, fig in zip(tokens, figs):
         fname = token.replace(":", "_") + ".png"
-        fig.savefig(out_dir / fname, dpi=200)
+        fig.savefig(out_dir / fname, dpi=800)
         plt.close(fig)
 
 
