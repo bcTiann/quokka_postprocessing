@@ -52,7 +52,7 @@ def build_table(
     tg_guesses: Sequence[float],
     *,
     species_specs: Sequence[SpeciesSpec],
-    chem_network=NL99,
+    chem_network=NL99_GC,
     show_progress: bool = True,
     workers: int | None = None,
 ) -> DespoticTable:

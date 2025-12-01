@@ -10,7 +10,7 @@ from quokka2s.pipeline.prep import config as cfg
 
 def main():
     table = load_table(cfg.DESPOTIC_TABLE_PATH)
-    samples = np.load("/Users/baochen/quokka_postprocessing/log_samples.npy")
+    samples = np.load("log_samples.npy")
 
     tokens = [
         "tg_final",
@@ -33,7 +33,7 @@ def main():
         separate=True,  # 默认每个字段单独一张图
         samples=samples,
     )
-    out_dir = Path("plots/table_overview_NL99")
+    out_dir = Path("plots/output_tables_NL99GC_test")
     out_dir.mkdir(parents=True, exist_ok=True)
     for token, fig in zip(tokens, figs):
         fname = token.replace(":", "_") + ".png"
