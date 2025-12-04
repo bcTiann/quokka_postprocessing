@@ -54,15 +54,24 @@ def _empty_line_results(species: Sequence[str]) -> dict[str, LineLumResult]:
 
 def _extract_line_result(transitions: Sequence[Mapping[str, float]]) -> LineLumResult:
     if not transitions:
+        print("_extract_line_result function failed")
         return _nan_line_result()
     entry = transitions[0]
+    # return LineLumResult(
+    #     freq=entry.get("freq", float("nan")),
+    #     intIntensity=entry.get("intIntensity", float("nan")),
+    #     intTB=entry.get("intTB", float("nan")),
+    #     lumPerH=entry.get("lumPerH", float("nan")),
+    #     tau=entry.get("tau", float("nan")),
+    #     tauDust=entry.get("tauDust", float("nan")),
+    # )
     return LineLumResult(
-        freq=entry.get("freq", float("nan")),
-        intIntensity=entry.get("intIntensity", float("nan")),
-        intTB=entry.get("intTB", float("nan")),
-        lumPerH=entry.get("lumPerH", float("nan")),
-        tau=entry.get("tau", float("nan")),
-        tauDust=entry.get("tauDust", float("nan")),
+        freq=entry.get("freq"),
+        intIntensity=entry.get("intIntensity"),
+        intTB=entry.get("intTB"),
+        lumPerH=entry.get("lumPerH"),
+        tau=entry.get("tau"),
+        tauDust=entry.get("tauDust"),
     )
 
 def _log_despotic_stdout(output: io.StringIO | str) -> None:

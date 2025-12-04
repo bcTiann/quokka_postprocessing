@@ -6,10 +6,10 @@ from despotic.chemistry import NL99, NL99_GC
 
 N_H_RANGE = (1e-5, 1e5)
 COL_DEN_RANGE = (1e15, 1e24)
-points = 100
+points = 50
 nH_grid = LogGrid(*N_H_RANGE, num_points=points)
 col_grid = LogGrid(*COL_DEN_RANGE, num_points=points)
-tg_guesses = [10.0, ]
+tg_guesses = [1000.0, ]
 # SPECIES = ('CO', 'C+', "C", 'HCO+', 'O')
 # ABUNDANCES = ('H+', 'H2', 'H3+', 'He+', 'OHx', 'CHx', 'CO', 'C', 
 #               'C+', 'HCO+', 'O', 'M+', 'H', 'He', 'M', 'e-')
@@ -23,12 +23,12 @@ SPECIES_SPECS = (
     SpeciesSpec("HCO+", True),
     SpeciesSpec("O", True),
     SpeciesSpec("e-", False),
-    # SpeciesSpec("H+", False),
+    SpeciesSpec("H+", False),
 )
 
 
 table = build_table(nH_grid, col_grid, tg_guesses, species_specs=SPECIES_SPECS, show_progress=True, chem_network=NL99_GC, workers=-1)
-output_dir = Path("output_tables_NL99GC_test")
+output_dir = Path("output_tables_NL99GC_50")
 output_dir.mkdir(parents=True, exist_ok=True)
 save_table(table, output_dir / "despotic_table.npz")
 
