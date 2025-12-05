@@ -229,7 +229,8 @@ def build_table(
             results = Parallel(n_jobs=workers)(delayed(solve_row)(row_idx) for row_idx in tasks)
 
         attempts: list[AttemptRecord] = []
-        for row_idx, tg_row, failure_row, line_rows, abundance_rows, mu_row, energy_rows, attempts_row in results:
+        # 解包顺序要与 _solve_row 返回一致：(..., line_rows, abundance_rows, energy_rows, mu_row, attempts_row)
+        for row_idx, tg_row, failure_row, line_rows, abundance_rows, energy_rows, mu_row, attempts_row in results:
             tg_table[row_idx, :, :] = tg_row
             failure_mask[row_idx, :, :] = failure_row
             mu_grid[row_idx, :, :] = mu_row
