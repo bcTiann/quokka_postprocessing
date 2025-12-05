@@ -68,7 +68,17 @@ DEFAULT_FIELDS: tuple[str, ...] = (
     "species:C+:lumPerH",
 )
 
-def _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=None):
+def _plot_panel(
+    ax, 
+    data, 
+    title, 
+    table, 
+    cmap, 
+    show_colorbar, 
+    fig, 
+    t_index: int = None, 
+    samples=None
+    ):
     # 对齐 build_despotic_table.py 的绘图风格：对数坐标、掩蔽非正值、叠加失败遮罩
     nH_edges = np.power(10.0, _log_edges(table.nH_values))
     col_edges = np.power(10.0, _log_edges(table.col_density_values))
@@ -97,7 +107,8 @@ def _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=None):
     ax.set_ylabel("n$_\\mathrm{H}$ (cm$^{-3}$)")
 
     if table.failure_mask is not None:
-        overlay = np.ma.masked_where(~table.failure_mask, np.ones_like(table.failure_mask, dtype=float))
+        mask2d = table.failure_mask[:, :, t_index]
+        overlay = np.ma.masked_where(~mask2d, np.ones_like(mask2d, dtype=float))
         ax.pcolormesh(
             col_edges,
             nH_edges,
@@ -135,6 +146,7 @@ def _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=None):
 
 def plot_table_overview(
     table: DespoticTable,
+    t_index: int | None = None,
     *,
     fields: Sequence[str] | None = None,
     ncols: int = 3,
@@ -164,7 +176,8 @@ def plot_table_overview(
         plt.Figure
             The matplotlib Figure object containing the plots.
     """
-
+    if t_index is None:
+            t_index = table.tg_final.shape[2] // 2  # 默认中间温度
     tokens = list(fields) if fields is not None else list(DEFAULT_FIELDS)
     if not tokens:
         raise ValueError("At least one field token must be specified for plotting.")
@@ -173,7 +186,9 @@ def plot_table_overview(
         for token in tokens:
             data, title = _get_field_data(table, token)
             fig, ax = plt.subplots(figsize=figsize)
-            _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=samples)
+            if data.ndim == 3:
+                data = data[:, :, t_index]
+            _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=samples, t_index=t_index)
             figs.append(fig)
         return figs
 
@@ -191,8 +206,9 @@ def plot_table_overview(
         ax = axes[row][col]
 
         data, title = _get_field_data(table, token)
-        _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=samples)
-
+        if data.ndim == 3:
+            data = data[:, :, t_index]
+        _plot_panel(ax, data, title, table, cmap, show_colorbar, fig, samples=samples, t_index=t_index)
 
     # Hide any unused subplots
     for idx in range(n_panels, nrows * ncols):

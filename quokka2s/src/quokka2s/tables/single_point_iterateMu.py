@@ -13,11 +13,18 @@ from quokka2s.pipeline.prep import config as cfg
 
 
 cell = cloud()
-
-cell.Tg = 1000.0
-cell.nH = 1e-3
-cell.colDen = 10000000000.0
-
+GAMMA = 5.0/3.0
+mh_cgs = mh.in_cgs().value  # g
+kB_cgs = kb.in_cgs().value  # erg/K 
+cell.nH = 1e-5
+cell.colDen = 1000000000000000.0
+test_T = 1000.0 * K
+test_mu = 1.4
+sim_rho = cell.nH * mh / 0.71  # 粗略估算质量密度
+sim_rho = sim_rho.in_cgs().value  # 转换为 cgs 单位 (g/cm^3)
+sim_internal_E = (sim_rho * kb * test_T) / (test_mu * mh * (GAMMA - 1.0))
+sim_internal_E = sim_internal_E.in_cgs().value  # 转换为 cgs 单位 (erg/cm^3)
+print(f"Simulated Input: nH={cell.nH:.1e}, E_int={sim_internal_E:.2e} erg/cm^3")
 
 co_line_map = []
 
@@ -55,14 +62,75 @@ print(f"Td = {cell.Td}")
 print("----------------------------")
 
 attempt_start = time.time()
-converged = cell.setChemEq(
-    network=NL99_GC,
-    # evolveTemp="iterateDust",
-    evolveTemp="fixed",
-    tol=1e-6,
-    maxTime=1e26,
-    maxTempIter=100,
-)
+# converged = cell.setChemEq(
+#     network=NL99_GC,
+#     evolveTemp="iterateDust",
+#     tol=1e-6,
+#     maxTime=1e26,
+#     maxTempIter=500,
+# )
+current_mu = 1.4  # 初始猜测值
+max_iter = 20
+tolerance = 1e-3
+for i in range(max_iter):
+    
+    # --- A. 根据 E_int 和 mu 计算温度 ---
+    # 公式: T = (E_int * (gamma-1) * mu * mH) / (rho * kB)
+    # 这里的 rho 我们用 Despotic 的定义: nH (H核密度)
+    # 注意：Despotic 的 mu 是 "mean mass per particle in units of mH"
+    # 理想气体定律变形: P = n_tot * kB * T
+    # P = (gamma - 1) * E_int
+    # n_tot = (rho) / (mu * mH)  <-- 这是一个很好的近似
+    
+    # 让我们用最稳健的公式：
+    # T = (gamma - 1) * (E_int / rho) * mu * (mH / kB)
+    # 其中 E_int/rho 就是 specific internal energy (erg/g)
+    
+    T_calc = (GAMMA - 1.0) * (sim_internal_E / sim_rho) * current_mu * (mh_cgs / kB_cgs)
+    
+    # --- B. 安全限制 (Clamping) ---
+    # 防止 T 变成 0 或 无穷大，导致 Despotic 报错
+    if T_calc < 2.73: T_calc = 2.73
+    if T_calc > 1e8: T_calc = 1e8 
+    
+    # --- C. 赋值给 Cell ---
+    cell.Tg = T_calc
+    
+    # --- D. 运行 Despotic (只算化学，不解热平衡) ---
+    # 关键点：evolveTemp='fixed'
+    converged = cell.setChemEq(
+        network=NL99_GC,
+        evolveTemp='fixed', 
+        tol=1e-6,
+        maxTime=1e10  # 化学平衡很快，不需要很长时间
+    )
+    
+    # --- E. 获取新的 mu ---
+    # 获取当前丰度
+    abundances = cell.chemnetwork.abundances
+    # 计算新的 mu (Despotic 自带函数)
+    new_mu = cell.chemnetwork.mu()
+    
+    print(f"Iter {i+1}: Input T={T_calc:.2f} K | Result mu={new_mu:.4f} | Converged={converged}")
+    
+    # --- F. 检查收敛 ---
+    if abs(new_mu - current_mu) / current_mu < tolerance:
+        print(">>> Converged!")
+        break
+        
+    current_mu = new_mu
+
+# ==========================================
+# 4. 结果输出
+# ==========================================
+print("\n------- Final Results --------")
+print(f"Final T: {cell.Tg:.2f} K")
+print(f"Final mu: {current_mu:.4f}")
+print(f"Abundances: C+={cell.chemnetwork.abundances['C+']:.2e}, CO={cell.chemnetwork.abundances['CO']:.2e}")
+print("\n------- Final Results ENDS--------")
+print("\n------------------------------------------------")
+
+
 
 duration = time.time() - attempt_start
 final_Tg = cell.Tg
