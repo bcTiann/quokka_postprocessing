@@ -28,8 +28,10 @@ src/quokka2s/pipeline/tasks/halpha_no_dust.py
 src/quokka2s/pipeline/tasks/run_pipeline.py
 src/quokka2s/pipeline/tasks/test.py
 src/quokka2s/tables/__init__.py
+src/quokka2s/tables/apply_lookup.py
 src/quokka2s/tables/build_table.py
 src/quokka2s/tables/builder.py
+src/quokka2s/tables/check_table_points.py
 src/quokka2s/tables/diagnostics.py
 src/quokka2s/tables/io.py
 src/quokka2s/tables/list_failures.py
@@ -37,6 +39,7 @@ src/quokka2s/tables/lookup.py
 src/quokka2s/tables/models.py
 src/quokka2s/tables/plotting.py
 src/quokka2s/tables/single_point.py
+src/quokka2s/tables/single_point_iterateMu.py
 src/quokka2s/tables/solver.py
 src/quokka2s/tables/view_table.py
 src/quokka2s/utils/__init__.py

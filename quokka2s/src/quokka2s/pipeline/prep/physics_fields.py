@@ -58,31 +58,60 @@ def _column_density_H(field, data):
 # --- YT Derived Fields ---
 
 
+# def _temperature(field, data):
+#     n_H = data[('gas', 'number_density_H')].to('cm**-3').value
+#     colDen_H = data[('gas', 'column_density_H')].to('cm**-2').value
+#     # for each point (nH, colDen) we get lookup our despotic table, get tempearture for that (nH, colDen)
+#     lookup = ensure_table_lookup(cfg.DESPOTIC_TABLE_PATH)
+
+#     nH_min, nH_max = lookup.table.nH_values.min(), lookup.table.nH_values.max()
+#     col_min, col_max = lookup.table.col_density_values.min(), lookup.table.col_density_values.max()
+#     n_H_safe = np.clip(n_H, nH_min, nH_max)
+#     col_safe = np.clip(colDen_H, col_min, col_max)
+    
+#     temps = lookup.temperature(nH_cgs=n_H_safe, colDen_cgs=col_safe)
+    
+#     return temps * K
+
 def _temperature(field, data):
+    rho = data[('gas', 'density')].to('g/cm**3').value   
     n_H = data[('gas', 'number_density_H')].to('cm**-3').value
     colDen_H = data[('gas', 'column_density_H')].to('cm**-2').value
+    E_int = data[('gas', 'internal_energy_density')].in_cgs().value
+
     # for each point (nH, colDen) we get lookup our despotic table, get tempearture for that (nH, colDen)
     lookup = ensure_table_lookup(cfg.DESPOTIC_TABLE_PATH)
-    # print("============================") 
-    # print(f"table nH_min:{nH_min:.3e}")
-    # print(f"table nH_max:{nH_max:.3e}")
-    # print(f"table col_min:{col_min:.3e}")
-    # print(f"table col_max:{col_max:.3e}")
-    # print("============================")
-    # print(f"data n_H min: {n_H.min():.3e}")
-    # print(f"data n_H max: {n_H.max():.3e}")
-    # print(f"data col min: {colDen_H.min():.3e}")
-    # print(f"data col max: {colDen_H.max():.3e}")
-    # print("============================")
+
     nH_min, nH_max = lookup.table.nH_values.min(), lookup.table.nH_values.max()
     col_min, col_max = lookup.table.col_density_values.min(), lookup.table.col_density_values.max()
+    T_min, T_max = lookup.table.T_values.min(), lookup.table.T_values.max()
+
     n_H_safe = np.clip(n_H, nH_min, nH_max)
     col_safe = np.clip(colDen_H, col_min, col_max)
 
-    temps = lookup.temperature(nH_cgs=n_H_safe, colDen_cgs=col_safe)
-    
-    return temps * K
+    gamma = 5/3
 
+    T = np.full_like(n_H_safe, 1e3)
+    conv_mask = np.zeros_like(T, dtype=bool)
+    for _ in range(20):
+        T = np.clip(T, T_min, T_max)
+        mu = lookup.mu(n_H_safe, col_safe, T)
+        T_new = (gamma - 1.0) * (E_int / rho) * mu * (mh.in_cgs().value / kb.in_cgs().value)
+        conv_now = np.abs(T_new - T) / np.maximum(T, 1e-10) < 1e-3
+        conv_mask |= conv_now
+        if conv_mask.all():
+            T = T_new
+            break
+        T[~conv_now] = T_new[~conv_now]
+    data._temp_conv = conv_mask 
+    return T * K
+
+
+def _temperature_converged(field, data):
+    if not hasattr(data, "_temp_conv"):
+        _ = _temperature(field, data)  # 触发一次计算
+    mask = getattr(data, "_temp_conv", np.zeros_like(data[('gas','density')], dtype=bool))
+    return mask
 
     
 # def _number_density_electron(field, data):
@@ -100,11 +129,14 @@ def _make_luminosity_field(species: str):
     def _field(field, data):
         n_H = data[('gas','number_density_H')].to('cm**-3').value
         colDen_H = data[('gas','column_density_H')].to('cm**-2').value
+        T = data[('gas','temperature')].to('K').value
         nH_min, nH_max = lookup.table.nH_values.min(), lookup.table.nH_values.max()
         col_min, col_max = lookup.table.col_density_values.min(), lookup.table.col_density_values.max()
+        T_min, T_max = lookup.table.T_values.min(), lookup.table.T_values.max()
         n_H_safe = np.clip(n_H, nH_min, nH_max)
         col_safe = np.clip(colDen_H, col_min, col_max)
-        lumPerH = lookup.line_field(species, "lumPerH", n_H_safe, col_safe)
+        T_safe = np.clip(T, T_min, T_max)
+        lumPerH = lookup.line_field(species, "lumPerH", n_H_safe, col_safe, T_cgs=T_safe)
         return (n_H_safe * lumPerH) * (erg / s / cm**3)
     _field.__name__ = f"_luminosity_{yt_safe_name}"
     return yt_safe_name, _field
@@ -119,11 +151,14 @@ def _make_number_density_field(species: str):
     def _field(field, data):
         n_H = data[('gas','number_density_H')].to('cm**-3').value
         colDen_H = data[('gas','column_density_H')].to('cm**-2').value
+        T = data[('gas','temperature')].to('K').value
         nH_min, nH_max = lookup.table.nH_values.min(), lookup.table.nH_values.max()
         col_min, col_max = lookup.table.col_density_values.min(), lookup.table.col_density_values.max()
+        T_min, T_max = lookup.table.T_values.min(), lookup.table.T_values.max()
         n_H_safe = np.clip(n_H, nH_min, nH_max)
         col_safe = np.clip(colDen_H, col_min, col_max)
-        densities = lookup.number_densities([token], n_H_safe, col_safe)
+        T_safe = np.clip(T, T_min, T_max)
+        densities = lookup.number_densities([token], n_H_safe, col_safe, T_cgs=T_safe)
         return densities[token] * cm**-3
     _field.__name__ = f"_number_density_{yt_safe_name}"
     return yt_safe_name, _field
@@ -164,7 +199,7 @@ def add_all_fields(ds):
     ds.add_field(name=('gas', 'number_density_H'), function=_number_density_H, sampling_type="cell", units="cm**-3", force_override=True)
     ds.add_field(name=('gas', 'column_density_H'), function=_column_density_H, sampling_type="cell", units="cm**-2", force_override=True)
     ds.add_field(name=('gas', 'temperature'), function=_temperature, sampling_type="cell", units="K", force_override=True)
-    
+    ds.add_field(name=('gas', 'temperature_converged'), function=_temperature_converged, sampling_type="cell", units="", force_override=True)
     # SPECIES = ['H+', 'H2', 'H3+', 'He+', 'OHx', 'CHx', 'CO', 'C', 
     #           'C+', 'HCO+', 'O', 'M+', 'H', 'He', 'M', 'e-']
     SPECIES = ['H+', 'CO', 'C', 'C+', 'e-']

@@ -14,6 +14,7 @@ def main():
 
     tokens = [
         "tg_final",
+        "mu",
         "species:CO:abundance",
         "species:CO:lumPerH",
         "species:CO:intTB",
@@ -35,7 +36,7 @@ def main():
         "species:H+:abundance",
 
     ]
-    T_targets = [2.73, 1e3, 5e4]
+    T_targets = [1.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10]
     T_indices = [int(np.argmin(np.abs(table.T_values - T))) for T in T_targets]
     table_path = Path(cfg.DESPOTIC_TABLE_PATH)
     base_dir = Path("plots") / table_path.parent.name

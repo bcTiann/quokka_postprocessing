@@ -46,7 +46,8 @@ def _get_field_data(table: DespoticTable, token: str) -> tuple[np.ndarray, str]:
         if not table.energy_terms or key not in table.energy_terms:
             raise ValueError(f"Energy term '{key}' not found in the table.")
         return table.energy_terms[key], f"Energy Term: {key}"
-    
+    if token == "mu":
+        return table.mu_values, "mu"
     if token.startswith("species:"):
         _, spec, field = token.split(":")
         record = table.require_species(spec)
