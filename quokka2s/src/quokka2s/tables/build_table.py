@@ -7,8 +7,8 @@ from quokka2s.pipeline.prep import config as cfg
 
 N_H_RANGE = (1e-5, 1e5)
 COL_DEN_RANGE = (1e15, 1e24)
-T_RANGE = (1.0, 5e10)
-points = 25
+T_RANGE = (2.0, 5e6)
+points = 50
 nH_grid = LogGrid(*N_H_RANGE, num_points=points)
 col_grid = LogGrid(*COL_DEN_RANGE, num_points=points)
 T_grid = LogGrid(*T_RANGE, num_points=points)
