@@ -5,7 +5,7 @@ from quokka2s.tables.builder import SpeciesSpec
 from despotic.chemistry import NL99, NL99_GC
 from quokka2s.pipeline.prep import config as cfg
 
-N_H_RANGE = (1e-5, 1e5)
+N_H_RANGE = (1e-4,  1e6)
 COL_DEN_RANGE = (1e15, 1e24)
 T_RANGE = (2.0, 5e6)
 points = 50
@@ -28,6 +28,8 @@ SPECIES_SPECS = (
     SpeciesSpec("O", True),
     SpeciesSpec("e-", False),
     SpeciesSpec("H+", False),
+    SpeciesSpec("H2", False),
+    SpeciesSpec("H", False),
 )
 
 

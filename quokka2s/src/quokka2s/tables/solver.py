@@ -187,8 +187,8 @@ def calculate_single_despotic_point(
                     network=chem_network,
                     evolveTemp="fixed",   # 关键：固定温度
                     tol=1e-6,
-                    maxTime=1e28,
-                    maxTempIter=500,
+                    maxTime=1e33,
+                    maxTempIter=1000,
                 )
             _log_despotic_stdout(stdout_buffer)
 
@@ -304,11 +304,13 @@ def calculate_single_despotic_point(
             cell.rad.chi = 1.0
 
             cell.comp.computeDerived(cell.nH)
-
+            ############
+            cell.setDustTempEq(verbose=False)
+            ############
             with contextlib.redirect_stdout(stdout_buffer):
                 converged = cell.setChemEq(
                     network=chem_network,
-                    evolveTemp="iterateDust",
+                    evolveTemp="fixed",
                     tol=1e-6,
                     maxTime=1e22,
                     maxTempIter=50,
@@ -316,7 +318,7 @@ def calculate_single_despotic_point(
             chem_abundances = dict(cell.chemabundances)
             last_chem_abundances = dict(chem_abundances)
             _log_despotic_stdout(stdout_buffer)
-
+    
             line_results: dict[str, LineLumResult] = {}
             species_abundances: dict[str, float] = {}
             for species in species_order:
@@ -359,6 +361,7 @@ def calculate_single_despotic_point(
             )
 
         except Exception as exc:
+
             if attempt_log is not None:
                 attempt_log.append(
                     AttemptRecord(
@@ -372,6 +375,15 @@ def calculate_single_despotic_point(
                         message=str(exc),
                         duration=time.perf_counter() - attempt_start_time,
                     )
+            )
+            return (
+                MappingProxyType(last_line_results),
+                MappingProxyType(last_abundances),
+                MappingProxyType(last_chem_abundances),
+                mu_val,
+                last_final_tg,
+                MappingProxyType(last_energy_terms),
+                failed,
             )
 
 

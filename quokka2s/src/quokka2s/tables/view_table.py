@@ -32,11 +32,12 @@ def main():
         "species:HCO+:intTB",
 
         "species:e-:abundance",
-
+        "species:H:abundance",
+        "species:H2:abundance",
         "species:H+:abundance",
 
     ]
-    T_targets = [1.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10]
+    T_targets = [1.0, 5e1, 5e2, 5e3, 5e4, 5e5, 5e6]
     T_indices = [int(np.argmin(np.abs(table.T_values - T))) for T in T_targets]
     table_path = Path(cfg.DESPOTIC_TABLE_PATH)
     base_dir = Path("plots") / table_path.parent.name
